@@ -1,6 +1,7 @@
 ---
 name: delegated-autonomy
 description: Work as an autonomous coordinator under an operator's mandate — multi-day goals, explicit boundaries, durable context that survives crashes, sub-agents in worktrees, local gates, and async decisions. Use when the operator grants an autonomy window ("work autonomously until Monday 10:00"), resumes after a crash or context reset ("reload context and continue"), when a scheduled heartbeat or recurring check-in prompt fires, or when the operator asks for status during long-running delegated work.
+license: MIT
 ---
 
 # Delegated Autonomy
@@ -141,6 +142,8 @@ worktree.
   the date in the body.
 - When a mandate or routing rule expires, delete its memory or reduce it
   to one superseded line. Delete memories that turn out wrong.
+- Don't store what the repo already records: code structure, git
+  history, docs.
 - At every window start, check the index against the files: every file
   listed once, no listed file missing, no expired entries. The index
   loads every session; keep it under about 100 lines.
@@ -162,8 +165,6 @@ Ask the operator first; it rewrites what every future session loads.
   expiry and drop with its reason and the backup path.
 
 Template: `templates/DREAM.md`.
-- Don't store what the repo already records: code structure, git
-  history, docs.
 
 ### REQUIREMENTS.md, PLAN.md and LOG.md
 
@@ -179,7 +180,7 @@ them.
 |---|---|---|
 | Answers | *What* must be true, and *why* | *How* and *in what order* we get there |
 | Owner | The operator. The agent proposes, the operator accepts | The agent. The operator approves it and any material change |
-| Contents | Goal, users, numbered requirements (`R1`, `R2`, ...) with acceptance criteria, constraints, non-goals, open questions | A **current mandate** block (window, free, reserved, stop rules, AI routing), phases and tasks that reference requirement IDs, status, branch/SHA per task, risks, next decision for the operator |
+| Contents | Goal, users, numbered requirements (`R1`, `R2`, ...) with acceptance criteria, constraints, non-goals, open questions | A **current mandate** block (window, free, reserved, stop rules, AI routing), phases and tasks that reference requirement IDs, blockers, status, branch/SHA per task, risks, next decision for the operator |
 | Changes when | The operator decides something new | Work progresses, or reality disagrees with the plan |
 
 Rules:
@@ -263,6 +264,10 @@ You coordinate. Builders and reviewers do focused work.
 
 - **One worktree and one branch per task.** Builders commit there and
   never push, merge or deploy.
+- **Split only what needs splitting.** One task or a short chain runs as a
+  sequential loop: build, review, merge, verify, next. When a goal needs
+  several dependent or parallel tasks, or tasks that must land together,
+  plan and integrate them with the `delivery-graph` skill.
 - **Assume other sessions share the machine and the repository.** Do
   multi-step work in your own worktree, not the main checkout. Run
   `git branch --show-current` right before every commit, stage explicit
@@ -291,17 +296,21 @@ You coordinate. Builders and reviewers do focused work.
 - **Review with another model or a fresh agent.** Give the reviewer the
   diff, not your conclusion.
 - **Verify the work yourself.** Read the report, check that the branch
-  tip hasn't moved, run the full suite once on the merged tip, then
-  merge, push and remove the worktree. Two branches that each pass can
+  tip hasn't moved, merge it locally, and run the full suite once on that
+  merge result. Only a green merge result is pushed (when the mandate
+  allows it); then remove the worktree. Two branches that each pass can
   fail together, for example through a generated fixture or a checksum
   that both of them touch. Fix that in its own commit on the merged tip,
   and say what you regenerated and why.
 - **Clean up worktrees as part of the merge.** Archive `.handoff/`,
   remove the worktree, and delete the branch once it is merged. Decide
-  that from git: `git cherry main <branch>` prints only `-` lines (this
-  also holds after a squash or rebase merge, where `git log main..<branch>`
-  never empties). Don't parse `git worktree list` output: a `locked`
-  suffix or a detached HEAD breaks naive parsing.
+  that from git: `git cherry main <branch>` prints no `+` lines (this
+  also holds after a rebase merge, where `git log main..<branch>` never
+  empties). A squash merge of several commits leaves `+` lines; there the
+  branch is merged when `git merge-tree --write-tree main <branch>`
+  prints the tree of `main` (`git rev-parse 'main^{tree}'`). Don't parse
+  `git worktree list` output: a `locked` suffix or a detached HEAD breaks
+  naive parsing.
 - Don't duplicate delegated work, and don't predict an agent's result
   before it reports.
 

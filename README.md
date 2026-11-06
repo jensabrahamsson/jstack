@@ -51,6 +51,7 @@ You course-correct now and then. That's the job.
 | Skill | Use it when |
 |---|---|
 | [**delegated-autonomy**](delegated-autonomy/SKILL.md) | You grant an autonomy window, resume after a crash or context reset, or want status on long-running delegated work. |
+| [**delivery-graph**](delivery-graph/SKILL.md) | A delegated goal needs several dependent or parallel tasks, or tasks that must land together. `delegated-autonomy` pulls it in; a single task never needs it. |
 
 ### The core ideas in `delegated-autonomy`
 
@@ -104,6 +105,27 @@ a [log](delegated-autonomy/templates/LOG.md), a
 [dream prompt](delegated-autonomy/templates/DREAM.md) and a
 [memory file](delegated-autonomy/templates/memory-example.md).
 
+### The core ideas in `delivery-graph`
+
+- **Proportionate**: one task or a short chain runs as a sequential
+  loop. A graph and an integration branch appear only when the work
+  needs them.
+- **The graph lives in `PLAN.md`**: a `Blocked by` and a `Scope` column
+  on the existing task table, pointing at existing tickets instead of
+  copying them. An open question blocks only the tasks that list it.
+- **Parallel only when safe**: no shared files or generated artifacts,
+  tests still one at a time behind the machine lock, and no more branches
+  than the coordinator can review.
+- **Briefs with a base and a scope**: the base SHA contains every
+  blocker, the write scope is bounded, and builders never merge or rebase.
+- **One verified candidate**: reviewed task tips merge into an
+  integration branch, and only the full suite and a combined review on
+  the candidate SHA count. Green branches one by one prove nothing about
+  the whole, and a green candidate grants no right to merge or deploy.
+- **Recovery**: conflicts, a moved main, a failing candidate, a stopped
+  task and a dead builder each have one rule. A stop on one task never
+  stops independent tasks.
+
 ---
 
 ## Install
@@ -115,13 +137,14 @@ clone the repo once and link each skill into place:
 git clone https://github.com/jensabrahamsson/jstack.git ~/jstack
 mkdir -p ~/.claude/skills
 ln -s ~/jstack/delegated-autonomy ~/.claude/skills/delegated-autonomy
+ln -s ~/jstack/delivery-graph ~/.claude/skills/delivery-graph
 ```
 
 `git -C ~/jstack pull` updates every linked skill. To use a skill in one
 project only, copy it into that repository instead:
 
 ```bash
-cp -R jstack/delegated-autonomy your-repo/.claude/skills/
+cp -R jstack/delegated-autonomy jstack/delivery-graph your-repo/.claude/skills/
 ```
 
 Then tell your agent:
@@ -138,6 +161,13 @@ Then tell your agent:
   `grill-me` / `grill-with-docs` to settle the requirements with the agent
   interactively, then hand the result to jstack as `REQUIREMENTS.md` and
   let it run. Pocock for *what*, jstack for *doing it while you sleep*.
+  `delivery-graph` adapts the task graph, frontier, vertical slices and
+  integration branch from his
+  [`to-tickets`](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-tickets/SKILL.md)
+  and
+  [`implement-spec`](https://github.com/mattpocock/skills/blob/main/skills/engineering/implement-spec/SKILL.md)
+  skills (MIT License, Copyright (c) 2026 Matt Pocock). If his tickets
+  already exist, `delivery-graph` uses their IDs and edges as they are.
 
 ---
 
@@ -151,4 +181,7 @@ broke without it.
 
 ## License
 
-[MIT](LICENSE) © 2026 Jens Abrahamsson
+[MIT](LICENSE) © 2026 Jens Abrahamsson. Every skill carries
+`license: MIT` in its frontmatter. Ideas adapted from
+[mattpocock/skills](https://github.com/mattpocock/skills) are credited
+above and in the skill that uses them; that repository is also MIT.

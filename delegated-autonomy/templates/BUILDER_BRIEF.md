@@ -8,6 +8,12 @@ production or `git stash`.
 <What and why, in two to five sentences. Quote the operator's decision
 with its date.>
 
+## Scope
+- Traces to: <R-ids>. Proves: <acceptance criteria this task must meet>.
+- Base `<base sha>` already contains: <blocking tasks, or "nothing">.
+- Write scope: <files or directories>. If the task needs a change outside
+  it, stop and report; don't make the change.
+
 ## Already known / ruled out
 - <facts you established, so the builder does not redo them>
 
@@ -34,6 +40,7 @@ with its date.>
 ```
 
 ## Deliverable
-Write `.handoff/BUILD_REPORT.md` with these sections: commits, files
-changed, decisions and why, test commands and pass counts, open risks,
-anything that blocks the next step. Return a five-line summary.
+Write `.handoff/BUILD_REPORT.md` with these sections: base SHA and tip
+SHA, commits, files changed (and any outside the write scope), decisions
+and why, test commands and pass counts, open risks, anything that blocks
+the next step. Return a five-line summary.
