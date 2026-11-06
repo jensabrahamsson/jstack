@@ -1,5 +1,9 @@
 # Plan: <project or goal>
 
+<!-- Use this template only if the project has no plan file yet. If it has
+one (IMPLEMENTATION_PLAN.md, TICKETS.md, ...), extend that file instead and
+record the mapping in the current mandate block. -->
+
 Approved: <YYYY-MM-DD HH:MM TZ> ("<operator's words>").
 
 ## Current mandate (rewritten in place; changes go to LOG.md)
@@ -8,6 +12,7 @@ Approved: <YYYY-MM-DD HH:MM TZ> ("<operator's words>").
 - Reserved: <...>
 - Stop rules and safe state: <...>
 - Conditional approvals: <"operator's words"> (conditions: <...>)
+- Documents: plan and graph <file>, tickets <file>, requirements <file>, log <file>
 - AI routing: build <...>, review <...>, fallback <...>, never <...>; expires <...>
 
 Requirements: [REQUIREMENTS.md](REQUIREMENTS.md)
@@ -20,11 +25,11 @@ Requirements: [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ### Phase 1: <name>
 
-| Task | Traces to | Blocked by | Scope | Status | Branch / SHA | Evidence |
-|---|---|---|---|---|---|---|
-| T1 <task> | R1 | - | `<paths>` | done | `feat/x` -> merged `<full sha>` | test stamp `<sha>`; deploy `<sha>` |
-| T2 <task> | R2 | - | `<paths>` | in progress | `feat/y` from `<base sha>` @ `<sha>` | builder report `.handoff/...` |
-| T3 <task> | R1, R3 | T2, Q1 | `<paths>` | blocked | - | - |
+| Task | Traces to | Blocked by | Scope | Status | Branch / SHA | Landed | Evidence |
+|---|---|---|---|---|---|---|---|
+| T1 <task> | R1 | - | `<paths>` | done | `feat/x` -> merged `<full sha>` | <tip sha> -> `<landing sha>` | test stamp `<sha>`; deploy `<sha>` |
+| T2 <task> | R2 | - | `<paths>` | in progress | `feat/y` from `<base sha>` @ `<sha>` | - | builder report `.handoff/...` |
+| T3 <task> | R1, R3 | T2, Q1 | `<paths>` | blocked | - | - | - |
 
 `Blocked by` lists real edges only: tasks whose output this task needs,
 and open questions (Q-ids) whose answer changes it. `Scope` is the write

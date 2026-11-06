@@ -19,7 +19,7 @@ delegation.
 | Work | Shape | How it lands |
 |---|---|---|
 | One task, or a chain where each step needs the previous one | No graph. Sequential loop: build, review, merge, verify, next | One merge per task (§3) |
-| Several tasks, some independent, each safe on main alone | `Blocked by` column in PLAN.md; run the ready tasks | One merge per task, main verified after each |
+| Several tasks, some independent, each safe on main alone | `Blocked by` column in the plan; run the ready tasks | One merge per task, main verified after each |
 | Tasks that only work together, or that main must not see half-done | Full graph | Integration branch, one verified candidate, then land |
 
 Pick the smallest row that fits. Move down a row only when the work
@@ -53,10 +53,16 @@ Stay sequential when:
 - Give every task a **write scope**: the files or directories it may
   change. A builder that needs to edit outside it stops and reports.
 
-## 2. Record the graph in PLAN.md
+## 2. Record the graph in the plan the project already has
 
-The graph is the task table in `PLAN.md`, not a new file. It has two
-extra columns: `Blocked by` and `Scope`. Template:
+The graph is a task table in the file that owns the plan, as mapped in
+delegated-autonomy section 2 ("Use the project's existing documents").
+That can be `IMPLEMENTATION_PLAN.md`, `TICKETS.md` or the `PLAN.md`
+template; never a new graph file next to an existing plan. If tickets live
+in one file and the plan in another, put the edges where the tickets are,
+reuse their IDs, and let the plan link to them. Add the columns you need:
+`Blocked by`, `Scope`, and, once merged, `Landed` (branch tip and landing
+commit). Template:
 [`PLAN.md`](../delegated-autonomy/templates/PLAN.md).
 
 - **Blocked by** lists only real edges: a task whose output this task
@@ -123,7 +129,7 @@ default.
 With an integration branch:
 
 1. Cut `int/<goal>` from main at a recorded SHA. Record it in the
-   Integration block of `PLAN.md`.
+   Integration block of the plan.
 2. When a task's review passes on its tip SHA, merge that tip into the
    integration branch with a merge commit. Don't rebase or squash a
    reviewed branch: the review is bound to its SHA.
@@ -154,7 +160,7 @@ Only checks on the candidate count.
 | A blocker changed after a dependent task started | Keep the dependent branch. Merge it into the integration branch and run its checks there; don't ask the builder to rebase |
 | A task hits a stop rule | Mark it `stopped`. Its dependents stay `blocked` on it; independent tasks continue (§1). Don't merge it. If it is already merged and causes a failure, revert it on the integration branch in its own commit. Landing without it is a plan change (§2) |
 | A builder died or was stopped | Inspect its worktree, commit the WIP, and resume with a brief that names that commit (§2). Don't relaunch from scratch |
-| Resume after a crash | Rebuild the frontier from `PLAN.md` and git, not from memory: which task branches exist, which are merged (`git cherry int/<goal> <branch>` prints no `+` lines), which worktrees hold uncommitted work, which agents are alive |
+| Resume after a crash | Rebuild the frontier from the plan file and git, not from memory: which task branches exist, which are merged (the `Landed` record matches, see [`merged-branch-check.md`](../delegated-autonomy/reference/merged-branch-check.md); a branch that only looks unmerged is kept, never force-deleted), which worktrees hold uncommitted work, which agents are alive |
 
 Clean up as §3 says: archive `.handoff/`, remove the worktree and delete
 the branch once it is merged. Delete the integration branch only after

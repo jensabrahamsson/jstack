@@ -170,11 +170,20 @@ Template: `templates/DREAM.md`.
 
 `REQUIREMENTS.md` says what must be true, `PLAN.md` says how we get there
 and where we are, and `LOG.md` records what happened and who decided it.
+These are roles, not file names.
 
-Keep them out of the code history: in an untracked or ignored ops folder,
-or on a dedicated branch. At the repo root, every event becomes a commit,
-every builder branch carries a stale copy, and worktrees conflict over
-them.
+**Use the project's existing documents.** If the project already has an
+implementation plan, a ticket list, a spec or a decision log, map each
+role to that file and write the mapping once, in the current mandate
+block and the project instructions ("plan and graph:
+`IMPLEMENTATION_PLAN.md`; tickets: `TICKETS.md`; log: `ops/LOG.md`").
+Extend the owner file with the columns you need instead of creating a
+parallel plan. Two files that both claim to be the plan will drift apart.
+
+Only create the templates when a role has no home. Keep new ones out of
+the code history: in an untracked or ignored ops folder, or on a
+dedicated branch. At the repo root, every event becomes a commit, every
+builder branch carries a stale copy, and worktrees conflict over them.
 
 | | `REQUIREMENTS.md` | `PLAN.md` |
 |---|---|---|
@@ -303,14 +312,14 @@ You coordinate. Builders and reviewers do focused work.
   that both of them touch. Fix that in its own commit on the merged tip,
   and say what you regenerated and why.
 - **Clean up worktrees as part of the merge.** Archive `.handoff/`,
-  remove the worktree, and delete the branch once it is merged. Decide
-  that from git: `git cherry main <branch>` prints no `+` lines (this
-  also holds after a rebase merge, where `git log main..<branch>` never
-  empties). A squash merge of several commits leaves `+` lines; there the
-  branch is merged when `git merge-tree --write-tree main <branch>`
-  prints the tree of `main` (`git rev-parse 'main^{tree}'`). Don't parse
-  `git worktree list` output: a `locked` suffix or a detached HEAD breaks
-  naive parsing.
+  remove the worktree, and delete the branch once it is merged. Record
+  the branch tip and the landing commit in the plan when you merge, and
+  delete only when the tip is unchanged and the landing commit is in
+  `main`. Git's own signals (`--is-ancestor`, `git cherry`, `merge-tree`)
+  miss squash and rebase merges that needed conflict resolution; see
+  `reference/merged-branch-check.md`, which was tested on real merges. Never
+  force-delete a branch that only looks unmerged, and don't parse
+  `git worktree list` output.
 - Don't duplicate delegated work, and don't predict an agent's result
   before it reports.
 

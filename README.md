@@ -65,7 +65,7 @@ You course-correct now and then. That's the job.
   per file, with *why*), a timestamped `LOG.md`, and the plan.
   Context is a budget, so verify memories against the live system before
   acting on them.
-- **REQUIREMENTS.md, PLAN.md and LOG.md**: what, how and what happened. The operator owns *what* and *why*
+- **REQUIREMENTS.md, PLAN.md and LOG.md**: what, how and what happened. These are roles: if your project already has a plan or ticket file, jstack maps the role to it instead of adding a second plan. The operator owns *what* and *why*
   (numbered requirements with verifiable acceptance criteria). The agent
   owns *how*: a living plan where every task traces to a requirement and
   links to its proof (branch, SHA, test stamp, deploy). "Done" means
