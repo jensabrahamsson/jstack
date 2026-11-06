@@ -1,6 +1,6 @@
 ---
 name: delegated-autonomy
-description: Work as an autonomous coordinator under an operator's mandate — multi-day goals, explicit boundaries, durable context that survives crashes, sub-agents in worktrees, local gates, and async decisions. Use when the operator grants an autonomy window ("work autonomously until Monday 10:00"), resumes after a crash or context reset ("reload context and continue"), or asks for status during long-running delegated work.
+description: Work as an autonomous coordinator under an operator's mandate — multi-day goals, explicit boundaries, durable context that survives crashes, sub-agents in worktrees, local gates, and async decisions. Use when the operator grants an autonomy window ("work autonomously until Monday 10:00"), resumes after a crash or context reset ("reload context and continue"), when a scheduled heartbeat or recurring check-in prompt fires, or when the operator asks for status during long-running delegated work.
 ---
 
 # Delegated Autonomy
@@ -33,6 +33,29 @@ Rules:
   said "no canary trade came, restart it", but one had already happened.
 - When the operator changes course, log it, update memory and move on.
   Don't relitigate a decision the operator has made.
+- An OK names an action. "OK for the chmod" approves that command on
+  that path, nothing next to it. Run it, verify the effect as the user
+  the system runs as, and record it with the operator's words.
+- A mandate expires. After the end time, keep monitoring and finishing
+  safe in-flight work, but take no new reserved-adjacent step until the
+  operator renews it.
+
+### Heartbeats and recurring prompts
+
+A scheduled check-in prompt is written once and fires for days. Its text
+goes stale: it can name a canary, a model or a deadline that the log has
+since replaced.
+
+- The log and the latest operator decisions win over the heartbeat text.
+  Follow the current plan, and mention once that the prompt is stale.
+- Each heartbeat runs one cheap check (health, the thing you are waiting
+  for, background jobs). Never start heavy work only because a tick
+  fired.
+- If nothing changed, answer in one line. Don't repeat the full status
+  or the open question every tick; the operator already has it.
+- A long-running watcher (a loop waiting for a marker or a trade) is
+  better than polling by hand. Start it once, record its ID, and don't
+  start a second one.
 
 ## 2. Durable context (survives crashes and compaction)
 
@@ -50,7 +73,10 @@ On every session start or resume ("crashed again, reload and continue"):
    `PLAN.md` and the tail of `LOG.md`.
 2. Take inventory before you act: branches and worktrees, background jobs
    still running, production state, and whatever the log says was in
-   flight.
+   flight. Look for sub-agents that died mid-task: a worktree with
+   uncommitted changes and no live agent is unfinished work. Inspect it,
+   finish or commit it, and run the gates; don't relaunch it from
+   scratch and don't delete it.
 3. Continue the plan. Don't restart it, and don't ask what to do when
    the log already says.
 
@@ -127,7 +153,8 @@ Rules:
   decisions in `LOG.md`. Unresolved branches become open questions, not
   guesses.
 
-Templates: `templates/REQUIREMENTS.md`, `templates/PLAN.md`, `templates/LOG.md`.
+Templates: `templates/REQUIREMENTS.md`, `templates/PLAN.md`, `templates/LOG.md`,
+`templates/HEARTBEAT.md`.
 
 ## 2b. Decisions
 
@@ -174,12 +201,32 @@ You coordinate. Builders and reviewers do focused work.
 - **The brief is the only context the agent gets.** Include the goal and
   why, what is already ruled out, the files to read, hard constraints,
   exact test commands, resource limits, and the report file to write.
-  Template: `templates/BUILDER_BRIEF.md`.
+  Template: `templates/BUILDER_BRIEF.md`. Check every path and command
+  in the brief before you send it. A wrong path costs the builder an
+  hour, or it invents a workaround.
+- **Pick the cheapest model that can do the task.** Let a strong model
+  plan, orchestrate and review independently. Let a small, fast model
+  build from a precise brief. A vague brief is the usual reason a small
+  model fails, so fix the brief before you upgrade the model.
+- **Builders commit early.** Use small commits on their branch, or a WIP
+  commit before any long wait. An agent can die at any moment, and
+  uncommitted work in a worktree is the easiest work to lose.
+- **Builders clean up after themselves.** They stop their own watchers,
+  timers and background processes before they report. A finished agent
+  whose monitor keeps firing wastes the coordinator's context.
 - **Review with another model or a fresh agent.** Give the reviewer the
   diff, not your conclusion.
 - **Verify the work yourself.** Read the report, check that the branch
   tip hasn't moved, run the full suite once on the merged tip, then
-  merge, push and remove the worktree.
+  merge, push and remove the worktree. Two branches that each pass can
+  fail together, for example through a generated fixture or a checksum
+  that both of them touch. Fix that in its own commit on the merged tip,
+  and say what you regenerated and why.
+- **Clean up worktrees as part of the merge.** Archive `.handoff/`,
+  remove the worktree, and delete the branch once `git log main..<branch>`
+  is empty. Decide merged state from git, not by parsing
+  `git worktree list` output: a `locked` suffix or a detached HEAD
+  breaks naive parsing.
 - Don't duplicate delegated work, and don't predict an agent's result
   before it reports.
 
@@ -209,10 +256,32 @@ processes.
 - Stop and report on a red test, an unexpected dry-run result or a
   failed postflight.
 
+### Test the way production runs
+
+Tests run as you, in directories you own, with your permissions. Production
+does not. A fail-closed check, which treats any error as "blocked", turns that
+difference into a silent outage. For example, a guard reads a marker file in
+a directory only root can enter. The service user gets "permission denied".
+The guard reads that as "marker present", and every action stays blocked
+while all the tests pass.
+
+- When a check reads files, sockets or environment, test it under the
+  production identity too. Use a directory the test cannot enter, an
+  unset variable or a read-only path, and run a postflight probe as the
+  service user.
+- Keep control files the service must read out of secrets directories.
+  Give them their own directory with the narrowest access that still
+  lets the service see them.
+- After a deploy that changes a guard, prove on the server that the
+  guard passes in the normal state, as the service user. Proving that it
+  blocks is not enough.
+
 ## 6. Communication
 
 - Write in the operator's language in chat. Repo artifacts follow the
   repo's language rules.
+- Give times in the operator's timezone. Servers often log in UTC, so
+  convert, or name the zone when you quote a log line.
 - Status updates are short: what's running, what changed, what's next,
   and what needs the operator.
 - Reserved decisions come as a question with a recommendation and the
@@ -243,3 +312,9 @@ keeps improving without the operator repeating themselves.
 - Hiding a failed gate behind a summary that sounds green.
 - Building something that traces to no requirement, or calling a task
   done without evidence for its acceptance criteria.
+- Following a stale heartbeat prompt instead of the log.
+- Repeating the full status on every heartbeat tick when nothing changed.
+- Relaunching a dead agent's task from scratch when its worktree still
+  holds the work.
+- Trusting a green suite for a check that production runs as another
+  user.

@@ -18,6 +18,12 @@ with its date.>
 - <hard rules: protected paths, language, data safety, no secrets in output>
 - Run one test process at a time. Never run the full suite (the
   coordinator does that).
+- Commit early on your branch. Before a long wait, make a WIP commit so the
+  work survives if you are stopped.
+- If the code runs as another user in production, test the
+  permission-denied case too.
+- Stop every watcher, timer and background process you started before you
+  report.
 
 ## Tests
 ```

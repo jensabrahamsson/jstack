@@ -74,12 +74,20 @@ You course-correct now and then. That's the job.
   coordinator.
 - **Gates**: local tests, a dry run before every apply, postflight
   evidence, and no shortcuts past a refusal.
+- **Heartbeats**: a recurring check-in runs one cheap check, follows the
+  log rather than its own possibly stale text, and stays to one line when
+  nothing changed.
+- **Model routing**: a strong model plans and reviews, a small fast model
+  builds from a precise brief.
+- **Test the way production runs**: a fail-closed check that passes as
+  you can block everything as the service user.
 - **Communication**: short status, questions answerable in one line, and
   loud reports of what did *not* happen.
 
 Templates are included: [requirements](delegated-autonomy/templates/REQUIREMENTS.md),
 a [plan](delegated-autonomy/templates/PLAN.md), a [builder brief](delegated-autonomy/templates/BUILDER_BRIEF.md),
-a [log](delegated-autonomy/templates/LOG.md) and a
+a [log](delegated-autonomy/templates/LOG.md), a
+[heartbeat prompt](delegated-autonomy/templates/HEARTBEAT.md) and a
 [memory file](delegated-autonomy/templates/memory-example.md).
 
 ---
