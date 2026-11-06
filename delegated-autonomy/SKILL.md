@@ -62,6 +62,13 @@ Rules:
   often, sometimes mid-window ("only provider X for 24 hours"): log each
   change with its expiry, and when it expires fall back to the operator's
   standing preference, not to whatever is convenient.
+- **A cost limit is only as real as its measurement.** Record whether it
+  is hard or soft, what it covers, and which runs can be measured. For
+  OpenAI models the `openai-usage` skill measures tokens and an API
+  list-price estimate per run; a run it can't see is unknown, not zero.
+  If a hard limit covers runs nobody can measure, say before the first
+  delegation that the limit is not monitored, instead of reporting a
+  number that looks like control.
 - A mandate expires. After the end time, keep monitoring and finish
   in-flight local work, but take no free action that leaves the machine
   (merge to main, push, deploy) until the operator renews it. Extending a
@@ -298,6 +305,10 @@ You coordinate. Builders and reviewers do focused work.
   independently; a small, fast model builds from a precise brief. A vague
   brief is the usual reason a small model fails, so fix the brief before
   you upgrade the model.
+- **Record who ran what when usage is measured.** As you start each run
+  (builder, reviewer, retry, your own), add its id, role, task and attempt
+  to the usage attribution file (`openai-usage`). Attribution written
+  afterwards is a guess.
 - **Builders commit early.** Use small commits on their branch, or a WIP
   commit before any long wait. An agent can die at any moment, and
   uncommitted work in a worktree is the easiest work to lose.

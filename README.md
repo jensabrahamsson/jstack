@@ -52,6 +52,7 @@ You course-correct now and then. That's the job.
 |---|---|
 | [**delegated-autonomy**](delegated-autonomy/SKILL.md) | You grant an autonomy window, resume after a crash or context reset, or want status on long-running delegated work. |
 | [**delivery-graph**](delivery-graph/SKILL.md) | A delegated goal needs several dependent or parallel tasks, or tasks that must land together. `delegated-autonomy` pulls it in; a single task never needs it. |
+| [**openai-usage**](openai-usage/SKILL.md) | You want to know what a delegated goal consumed in OpenAI tokens and what that would cost at OpenAI's API list price, or the mandate sets a cost limit on OpenAI runs. OpenAI models only. |
 
 ### The core ideas in `delegated-autonomy`
 
@@ -134,6 +135,36 @@ a [log](delegated-autonomy/templates/LOG.md), a
   task and a dead builder each have one rule. A stop on one task never
   stops independent tasks.
 
+### The core ideas in `openai-usage`
+
+OpenAI models only. A small, tested, standard-library tool plus rules for
+the agent; the [skill](openai-usage/SKILL.md) keeps the two apart.
+
+- **Real data sources only**: the usage objects of the Responses, Chat
+  Completions and Agents APIs, and Codex CLI session logs. Each has
+  different gaps, and the skill lists them field by field. No common
+  source is invented.
+- **No double counting**: cached input is part of input and reasoning is
+  part of output. One count per response id across resumed, forked and
+  repeated logs; cumulative counters become differences.
+- **Observed, not configured**: only a response's `model` and
+  `service_tier` count as observed. Codex logs give the requested model and
+  the configured tier, and the report says so.
+- **Reproducible prices**: a pinned copy of OpenAI's price list with its
+  source URL, retrieval time and the source page's hash; every report names
+  the table's hash. Each call gets its tier, long-context, cached-input and
+  cache-write rates.
+- **Unknown is not zero**: each call is `exact`, `estimate`, `lower_bound`
+  or `unknown`. Sums say "at least" when anything is missing, and the
+  coverage section names every run, session and category that is missing.
+- **Not a bill**: subscription runs get a hypothetical list-price figure,
+  API runs an estimate to reconcile with billing records. A hard cost
+  limit that covers unmeasured runs is reported as not monitored.
+- **Metadata only**: ids, models, tiers, timestamps and counts. Never
+  prompts, code or tool output.
+
+See the [example report](openai-usage/reference/example-report.md).
+
 ---
 
 ## Install
@@ -146,6 +177,7 @@ git clone https://github.com/jensabrahamsson/jstack.git ~/jstack
 mkdir -p ~/.claude/skills
 ln -s ~/jstack/delegated-autonomy ~/.claude/skills/delegated-autonomy
 ln -s ~/jstack/delivery-graph ~/.claude/skills/delivery-graph
+ln -s ~/jstack/openai-usage ~/.claude/skills/openai-usage
 ```
 
 `git -C ~/jstack pull` updates every linked skill. To use a skill in one
@@ -153,7 +185,7 @@ project only, copy it into that repository instead:
 
 ```bash
 mkdir -p your-repo/.claude/skills
-cp -R ~/jstack/delegated-autonomy ~/jstack/delivery-graph your-repo/.claude/skills/
+cp -R ~/jstack/delegated-autonomy ~/jstack/delivery-graph ~/jstack/openai-usage your-repo/.claude/skills/
 ```
 
 Then tell your agent:
@@ -161,6 +193,9 @@ Then tell your agent:
 > *Work autonomously until Friday 18:00. Plan: 1) ... 2) ... 3) ...
 > Real money, production mode changes and anything irreversible need my OK.
 > Builds on the small model, reviews on a different vendor.*
+
+`openai-usage` needs Python 3.9 or later and nothing else. Its tests:
+`python3 -m unittest discover -s ~/jstack/openai-usage/tests`.
 
 ---
 

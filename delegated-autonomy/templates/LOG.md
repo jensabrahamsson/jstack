@@ -9,4 +9,5 @@ Plan (approved <date>, "<operator's words>"): 1) ... 2) ... 3) ...
 - <HH:MM> Operator: "<words>" -> <what changes>. Memory updated: <name>.
 - <HH:MM> **NOT done**: <step> (<reason>). Waiting for: <decision>.
 - <HH:MM> **STOPPED** <item>: stop rule <rule> fired (<evidence>). Production left in <safe state>. Other items continue.
+- <HH:MM> Usage <goal>: OpenAI <at least | ~> $<x> at API list price, <subscription: hypothetical | api: estimate, not the bill>; <n> calls (<exact/estimate/lower_bound/unknown counts>); unknown: <runs>. Records: <path>, prices `<table file>`.
 - <HH:MM> AI routing change: "<operator's words>" -> <new routing>, expires <time or never>.

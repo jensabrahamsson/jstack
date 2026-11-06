@@ -15,6 +15,7 @@ Approved: <YYYY-MM-DD HH:MM TZ> ("<operator's words>").
 - Conditional approvals: <"operator's words"> (conditions: <...>)
 - Documents: plan and graph <file>, tickets <file>, requirements <file>, log <file>
 - AI routing: build <...>, review <...>, fallback <...>, never <...>; expires <...>
+- Cost limit: <none | soft | hard> <amount> on <which runs>; measured by <openai-usage, attribution file path>; not measurable: <runs>, so <monitored | not monitored>
 
 Requirements: [REQUIREMENTS.md](REQUIREMENTS.md)
 
