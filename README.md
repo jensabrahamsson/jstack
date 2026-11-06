@@ -127,7 +127,9 @@ a [log](delegated-autonomy/templates/LOG.md), a
   the whole, and a green candidate grants no right to merge or deploy.
   Tasks are `verified` on the candidate and `done` only once landed; the
   landing merge carries the candidate's evidence only if its tree is
-  identical.
+  identical, and checks that depend on the SHA, history, time or
+  environment run again. `done` follows the mandate's delivery boundary:
+  local main, pushed or deployed.
 - **Recovery**: conflicts, a moved main, a failing candidate, a stopped
   task and a dead builder each have one rule. A stop on one task never
   stops independent tasks.

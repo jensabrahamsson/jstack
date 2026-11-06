@@ -83,7 +83,7 @@ commit). Template:
 | `review` | Builder reported; review bound to its tip SHA |
 | `integrated` | Merged into the integration branch, or into main |
 | `verified` | Its acceptance criteria proven on the candidate; not on main yet |
-| `done` | Landed on main, with the landing revision's evidence recorded (§5) |
+| `done` | Reached the mandate's delivery boundary (local main, pushed or deployed; the row says which), with the landing revision's evidence recorded (§5) |
 | `stopped` | A stop rule fired; the log says which |
 
 The **frontier** is every `ready` task. Recompute it after each status
@@ -150,12 +150,21 @@ With an integration branch:
    commit is a new SHA, so check its tree before you push:
    `git rev-parse <landing>^{tree}` must equal
    `git rev-parse <candidate>^{tree}`. Identical trees mean identical
-   content, so the candidate's suite and review carry over. Record the
+   tracked content, so the candidate's suite and review carry over. They
+   do not mean an identical run: rerun any check whose result depends on
+   the commit SHA or history (version stamps, changelog or history
+   linters, signed commits), on time, or on the environment and external
+   dependencies (unpinned packages, services, generated artifacts). Record the
    test stamp as "landing `<sha>`, tree identical to candidate `<sha>`",
    and run the project's fast smoke checks on the landing SHA. If the
    trees differ, the landing is untested: don't push it. Sync main into
    the integration branch and verify the new candidate.
-8. After the push, mark the tasks `done` and fill `Landed`.
+8. Mark the tasks `done` and fill `Landed` when the change reaches the
+   project's delivery boundary, as the mandate defines it: merged on the
+   local main if the mandate allows landing but not pushing, pushed, or
+   deployed. Record which one. A local landing that is not yet pushed
+   says so in the row (`done (local, not pushed)`), so nobody reads it as
+   delivered.
 
 Branches that pass one by one are not evidence that the whole works.
 Only checks on the candidate count.
@@ -209,8 +218,10 @@ Q1: which permission does the endpoint require? It blocks T3 only.
 6. Landing `<sha-E>` on main follows the mandate. If merging to main is
    reserved, ask with the evidence and wait. Main has not moved, so
    `git merge --no-ff <sha-E>` gives landing `<sha-L>` with the same tree
-   as `<sha-E>`. Run the smoke checks on `<sha-L>`, push, mark T1 to T3
-   `done` with `Landed`, then clean up the worktrees and branches.
+   as `<sha-E>`. Run the smoke checks on `<sha-L>`, plus the history-dependent
+   checks the project has. The mandate's delivery boundary here is
+   "pushed", so push, mark T1 to T3 `done` with `Landed`, then clean up
+   the worktrees and branches.
 
 A Q1 answer that never comes stops T3 only. T1 and T2 still land if the
 operator approves landing without T3.

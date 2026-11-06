@@ -9,6 +9,7 @@ Approved: <YYYY-MM-DD HH:MM TZ> ("<operator's words>").
 ## Current mandate (rewritten in place; changes go to LOG.md)
 - Window: until <YYYY-MM-DD HH:MM TZ>
 - Free: <...>
+- Delivery boundary ("done" means): <merged locally | pushed | deployed>
 - Reserved: <...>
 - Stop rules and safe state: <...>
 - Conditional approvals: <"operator's words"> (conditions: <...>)

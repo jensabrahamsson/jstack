@@ -20,7 +20,8 @@ A mandate has six parts. Write all of them down the moment you get them:
   absolute ones.
 - **Goals**: the approved plan, in priority order.
 - **Free actions**: what you may do without asking (build, test, merge,
-  deploy to a safe mode, document).
+  deploy to a safe mode, document). Name the delivery boundary: merged
+  locally, pushed, or deployed. "Done" means reaching it.
 - **Reserved decisions**: what always needs an explicit OK. Typical
   examples are real money, production mode changes, anything irreversible
   or outward-facing, and new scope.
@@ -347,7 +348,9 @@ processes.
   test stamp equal to `HEAD`). A merge commit made only to land an
   already-tested revision may carry that revision's stamp if its tree is
   identical (`git rev-parse <sha>^{tree}`); record both SHAs and run the
-  smoke checks on the new one. A different tree means untested.
+  smoke checks on the new one. A different tree means untested. Same
+  tree is same tracked files, not same run: rerun checks that depend on
+  the SHA, history, time or environment.
 - Do a dry run before every apply, and read the dry run. A refusal is
   information, not an obstacle to route around.
 - Never take a shortcut past a gate: no hand-edited server state, no
