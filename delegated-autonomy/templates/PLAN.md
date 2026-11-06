@@ -28,6 +28,7 @@ Requirements: [REQUIREMENTS.md](REQUIREMENTS.md)
 | Task | Traces to | Blocked by | Scope | Status | Branch / SHA | Landed | Evidence |
 |---|---|---|---|---|---|---|---|
 | T1 <task> | R1 | - | `<paths>` | done | `feat/x` | `<tip sha>` -> `<landing sha>` | test stamp `<sha>`; deploy `<sha>` |
+| T4 <task> | R2 | - | `<paths>` | verified | `feat/z` @ `<sha>` | - | suite + review on candidate `<sha>`; waiting to land |
 | T2 <task> | R2 | - | `<paths>` | in progress | `feat/y` from `<base sha>` @ `<sha>` | - | builder report `.handoff/...` |
 | T3 <task> | R1, R3 | T2, Q1 | `<paths>` | blocked | - | - | - |
 

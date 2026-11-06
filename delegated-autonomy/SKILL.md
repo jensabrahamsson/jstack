@@ -317,7 +317,8 @@ You coordinate. Builders and reviewers do focused work.
   the branch tip and the landing commit in the plan when you merge, and
   delete only when the tip is unchanged and the landing commit is in
   `main`. Git's own signals (`--is-ancestor`, `git cherry`, `merge-tree`)
-  miss squash and rebase merges that needed conflict resolution; see
+  are heuristics: tested on 13 merge shapes, they miss squash and rebase
+  merges that needed conflict resolution; see
   `reference/merged-branch-check.md`. Never force-delete a branch that
   only looks unmerged. Parse only `git worktree list --porcelain`, never
   the human-readable output.
@@ -343,7 +344,10 @@ processes.
 ## 5. Gates before anything leaves the machine
 
 - Run tests locally. Bind the deploy gate to the exact commit SHA (a
-  test stamp equal to `HEAD`).
+  test stamp equal to `HEAD`). A merge commit made only to land an
+  already-tested revision may carry that revision's stamp if its tree is
+  identical (`git rev-parse <sha>^{tree}`); record both SHAs and run the
+  smoke checks on the new one. A different tree means untested.
 - Do a dry run before every apply, and read the dry run. A refusal is
   information, not an obstacle to route around.
 - Never take a shortcut past a gate: no hand-edited server state, no

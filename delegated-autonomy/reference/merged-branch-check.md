@@ -23,10 +23,12 @@ for `merge-tree --write-tree`):
 
 What this shows:
 
-- **Every signal failed only in the safe direction** in these cases: it
-  said "not merged" for some merged branches, never "merged" for a
-  branch with unique work. A clean result on any one of them means
-  deleting loses no content.
+- **In these 13 cases, every signal failed only in the safe direction:**
+  it said "not merged" for some merged branches and never "merged" for a
+  branch with unique work. That is observed behaviour for these shapes,
+  not a proof for every possible history (octopus merges, filtered or
+  rewritten history, submodules and partial clones are untested). Treat
+  the signals as heuristics; the landing record is the evidence.
 - **None of them proves a squash or rebase merge that needed conflict
   resolution, or one main changed afterwards.** Those branches look
   unmerged forever, so a rule based on these signals alone either leaks
@@ -43,7 +45,8 @@ What this shows:
 2. **Delete only when** the branch tip still equals the recorded tip (no
    commits since), the landing commit is an ancestor of `main`, and the
    worktree has no uncommitted changes.
-3. **Without a record,** delete only when `git merge-base --is-ancestor
+3. **Without a record,** the git signals are a fallback heuristic, not
+   proof. Delete only when `git merge-base --is-ancestor
    <branch> main` holds, or `git cherry main <branch>` prints no `+`
    lines, or `git merge-tree --write-tree main <branch>` equals
    `git rev-parse 'main^{tree}'`, and the worktree has no uncommitted

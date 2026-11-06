@@ -125,6 +125,9 @@ a [log](delegated-autonomy/templates/LOG.md), a
   integration branch, and only the full suite and a combined review on
   the candidate SHA count. Green branches one by one prove nothing about
   the whole, and a green candidate grants no right to merge or deploy.
+  Tasks are `verified` on the candidate and `done` only once landed; the
+  landing merge carries the candidate's evidence only if its tree is
+  identical.
 - **Recovery**: conflicts, a moved main, a failing candidate, a stopped
   task and a dead builder each have one rule. A stop on one task never
   stops independent tasks.

@@ -82,7 +82,8 @@ commit). Template:
 | `in progress` | A builder owns it; worktree, branch and base SHA recorded |
 | `review` | Builder reported; review bound to its tip SHA |
 | `integrated` | Merged into the integration branch, or into main |
-| `done` | Its acceptance criteria verified on the revision that lands |
+| `verified` | Its acceptance criteria proven on the candidate; not on main yet |
+| `done` | Landed on main, with the landing revision's evidence recorded (§5) |
 | `stopped` | A stop rule fired; the log says which |
 
 The **frontier** is every `ready` task. Recompute it after each status
@@ -137,12 +138,24 @@ With an integration branch:
    results to the candidate SHA.
 5. Any later commit (a fix, a merge from main) makes a new candidate.
    Rerun the checks. Old evidence doesn't carry over.
-6. Mark tasks `done` once the candidate's checks prove their criteria.
+6. Mark tasks `verified` once the candidate's checks prove their
+   criteria. `verified` grants no right to merge, push or deploy.
    Landing the candidate on main is the mandate's merge action, free only
-   if the mandate says so. Land it with a merge commit, not a squash or
-   rebase, so each task's recorded landing commit stays in main's history
-   and its branch can be deleted safely. A green candidate or a finished
-   graph grants no right to merge, push or deploy.
+   if the mandate says so.
+7. **Land so the evidence carries.** First make the candidate contain the
+   current main: if main moved, merge it into the integration branch.
+   That is a new candidate (step 5). Then land with a merge commit
+   (`git merge --no-ff <candidate>`), not a squash or rebase, so each
+   task's recorded landing commit stays in main's history. The landing
+   commit is a new SHA, so check its tree before you push:
+   `git rev-parse <landing>^{tree}` must equal
+   `git rev-parse <candidate>^{tree}`. Identical trees mean identical
+   content, so the candidate's suite and review carry over. Record the
+   test stamp as "landing `<sha>`, tree identical to candidate `<sha>`",
+   and run the project's fast smoke checks on the landing SHA. If the
+   trees differ, the landing is untested: don't push it. Sync main into
+   the integration branch and verify the new candidate.
+8. After the push, mark the tasks `done` and fill `Landed`.
 
 Branches that pass one by one are not evidence that the whole works.
 Only checks on the candidate count.
@@ -192,10 +205,12 @@ Q1: which permission does the endpoint require? It blocks T3 only.
    in its own commit on the integration branch, have it reviewed, and run
    the full suite on the new candidate `<sha-E>`: green. A fresh review of
    `main...<sha-E>` passes. Record both against `<sha-E>` and mark T1
-   to T3 `done`.
+   to T3 `verified`.
 6. Landing `<sha-E>` on main follows the mandate. If merging to main is
-   reserved, ask with the evidence and wait. Then clean up the worktrees
-   and branches.
+   reserved, ask with the evidence and wait. Main has not moved, so
+   `git merge --no-ff <sha-E>` gives landing `<sha-L>` with the same tree
+   as `<sha-E>`. Run the smoke checks on `<sha-L>`, push, mark T1 to T3
+   `done` with `Landed`, then clean up the worktrees and branches.
 
 A Q1 answer that never comes stops T3 only. T1 and T2 still land if the
 operator approves landing without T3.
