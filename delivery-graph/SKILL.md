@@ -106,16 +106,11 @@ you can review is a queue, not progress.
 
 ## 4. Brief each builder
 
-Use the [builder brief](../delegated-autonomy/templates/BUILDER_BRIEF.md).
-For a graph task it also names:
-
-- **Base**: the full SHA that contains every blocker. With an integration
-  branch, that is its tip after the blockers merged, never a blocker's
-  own branch.
-- **Write scope**, and that anything outside it means stop and report.
-- **Acceptance criteria** the task proves, with the checks that show it.
-- **Report**: base SHA, tip SHA, files changed against the scope, test
-  commands and counts.
+Use the [builder brief](../delegated-autonomy/templates/BUILDER_BRIEF.md)
+and fill its Scope section: the criteria the task proves, the write
+scope, and the base. The base is the full SHA that contains every
+blocker; with an integration branch, its tip after the blockers merged,
+never a blocker's own branch.
 
 Builders don't merge, rebase onto a moved base, push or open pull
 requests. The coordinator owns every merge (§3).
@@ -144,8 +139,10 @@ With an integration branch:
    Rerun the checks. Old evidence doesn't carry over.
 6. Mark tasks `done` once the candidate's checks prove their criteria.
    Landing the candidate on main is the mandate's merge action, free only
-   if the mandate says so. A green candidate or a finished graph grants
-   no right to merge, push or deploy.
+   if the mandate says so. Land it with a merge commit, not a squash or
+   rebase, so each task's recorded landing commit stays in main's history
+   and its branch can be deleted safely. A green candidate or a finished
+   graph grants no right to merge, push or deploy.
 
 Branches that pass one by one are not evidence that the whole works.
 Only checks on the candidate count.
@@ -162,9 +159,8 @@ Only checks on the candidate count.
 | A builder died or was stopped | Inspect its worktree, commit the WIP, and resume with a brief that names that commit (§2). Don't relaunch from scratch |
 | Resume after a crash | Rebuild the frontier from the plan file and git, not from memory: which task branches exist, which are merged (the `Landed` record matches, see [`merged-branch-check.md`](../delegated-autonomy/reference/merged-branch-check.md); a branch that only looks unmerged is kept, never force-deleted), which worktrees hold uncommitted work, which agents are alive |
 
-Clean up as §3 says: archive `.handoff/`, remove the worktree and delete
-the branch once it is merged. Delete the integration branch only after
-main holds it.
+Clean up task worktrees and branches as §3 says. Delete the integration
+branch only after main holds it.
 
 ## Example: three tasks
 

@@ -1,8 +1,8 @@
 # Builder brief: <task>
 
 You are a builder. Work only in `<worktree path>` on branch `<branch>`
-(cut from `<base sha>`). Commit there. Do not push, merge, deploy, touch
-production or `git stash`.
+(cut from `<base sha>`). Commit there. Do not push, merge, rebase, open
+pull requests, deploy or touch production.
 
 ## Goal
 <What and why, in two to five sentences. Quote the operator's decision

@@ -55,7 +55,7 @@ Rules:
   working on items that don't depend on it.
 - When a premise behind an order turns out false, don't execute the
   letter of the order. Report the new fact and ask. Example: the operator
-  said "no canary trade came, restart it", but one had already happened.
+  said "the canary never ran, restart it", but it had already run.
 - When the operator changes course, log it, update memory and move on.
   Don't relitigate a decision the operator has made. AI routing changes
   often, sometimes mid-window ("only provider X for 24 hours"): log each
@@ -79,7 +79,7 @@ since replaced.
   step is due. It never starts unplanned heavy work.
 - If nothing changed, answer in one line. Don't repeat the full status
   or the open question every tick; the operator already has it.
-- A long-running watcher (a loop waiting for a marker or a trade) is
+- A long-running watcher (a loop waiting for a marker or an event) is
   better than polling by hand. Start it once, record its ID, and don't
   start a second one.
 
@@ -110,8 +110,9 @@ On every session start or resume ("crashed again, reload and continue"):
    the log already says.
 
 Each delegated task keeps a `.handoff/` folder in its worktree: the
-prompt, a build report and test logs. Archive it before you remove the
-worktree.
+prompt, a build report and test logs. Keep it out of git (ignore it), so
+briefs and operator quotes never enter code history. Archive it before
+you remove the worktree.
 
 ### Context is a budget
 
@@ -236,10 +237,11 @@ Every decision the operator makes is recorded right away:
    entry with date and attribution. Never in the project instructions
    file: it holds rules, not history.
 
-Exact words stay in `LOG.md` and memory, outside the code history. In
-committed files, quote the operator in the repo's language and mark a
-translation "(translated)"; a repo with language checks will otherwise
-fail on the quote.
+Exact words stay in memory and in an uncommitted log, outside the code
+history. If the log role maps to a committed file, or the words go into
+any other committed file, quote the operator in the repo's language and
+mark a translation "(translated)"; a repo with language checks will
+otherwise fail on the quote.
 
 If memory and `LOG.md` disagree, the newer operator words in `LOG.md` win.
 Fix the memory at once.
@@ -263,9 +265,8 @@ revision or digest:
 - **State transitions** (arm, activate, rollback) record the SHA and
   config digest that performed them. Undo from a checkout of *that*
   revision, not from whatever `main` is now.
-- **Log entries** cite commits, digests, backup paths and transaction
-  hashes in full. Never truncate an identifier someone may need to
-  copy.
+- **Log entries** cite commits, digests, backup paths and run IDs in
+  full. Never truncate an identifier someone may need to copy.
 
 ## 3. Coordinator and sub-agents
 
@@ -317,9 +318,9 @@ You coordinate. Builders and reviewers do focused work.
   delete only when the tip is unchanged and the landing commit is in
   `main`. Git's own signals (`--is-ancestor`, `git cherry`, `merge-tree`)
   miss squash and rebase merges that needed conflict resolution; see
-  `reference/merged-branch-check.md`, which was tested on real merges. Never
-  force-delete a branch that only looks unmerged, and don't parse
-  `git worktree list` output.
+  `reference/merged-branch-check.md`. Never force-delete a branch that
+  only looks unmerged. Parse only `git worktree list --porcelain`, never
+  the human-readable output.
 - Don't duplicate delegated work, and don't predict an agent's result
   before it reports.
 
@@ -330,7 +331,9 @@ processes.
 
 - Run one heavy job at a time **per machine**, not per agent: full test
   suites, builds, model runs. Take a machine-wide lock for each one (for
-  example `flock <shared path>/heavy.lock <command>`) and put the lock
+  example `flock <shared path>/heavy.lock <command>` on Linux; macOS has
+  no `flock`, so use an atomic `mkdir <shared path>/heavy.lock` that the
+  holder removes on exit) and put the lock
   command in every brief. Parallel suites crash workstations.
 - Any watchdog kills only its own process tree, never by process name.
   The operator runs other jobs on the same machine.

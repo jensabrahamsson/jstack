@@ -2,12 +2,14 @@
 
 Deleting a branch or worktree that still holds unmerged work loses it. Git
 offers three signals. Each was tested against real merge shapes with
-`merged-branch-cases.sh` (git 2.4x):
+`merged-branch-cases.sh`, which prints the rows below (git 2.38 or later,
+for `merge-tree --write-tree`):
 
 | Case | `merge-base --is-ancestor` | `git cherry` `+` lines | `merge-tree` equals main |
 |---|---|---|---|
 | Merge commit | yes | 0 | yes |
 | Fast-forward | yes | 0 | yes |
+| Branch rebased, then fast-forward | yes | 0 | yes |
 | Rebase merge, clean (new commits) | no | 0 | yes |
 | Rebase merge with a conflict | no | 1 | no |
 | Squash merge, clean | no | 2 | yes |
@@ -44,5 +46,6 @@ What this shows:
 3. **Without a record,** delete only when `git merge-base --is-ancestor
    <branch> main` holds, or `git cherry main <branch>` prints no `+`
    lines, or `git merge-tree --write-tree main <branch>` equals
-   `git rev-parse 'main^{tree}'`. Otherwise keep the branch and list it
-   for the operator; never force-delete it.
+   `git rev-parse 'main^{tree}'`, and the worktree has no uncommitted
+   changes. Otherwise keep the branch and list it for the operator; never
+   force-delete it.

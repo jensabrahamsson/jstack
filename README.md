@@ -65,8 +65,11 @@ You course-correct now and then. That's the job.
   per file, with *why*), a timestamped `LOG.md`, and the plan.
   Context is a budget, so verify memories against the live system before
   acting on them.
-- **REQUIREMENTS.md, PLAN.md and LOG.md**: what, how and what happened. These are roles: if your project already has a plan or ticket file, jstack maps the role to it instead of adding a second plan. The operator owns *what* and *why*
-  (numbered requirements with verifiable acceptance criteria). The agent
+- **REQUIREMENTS.md, PLAN.md and LOG.md**: what, how and what happened.
+  These are roles: if your project already has a plan or ticket file,
+  jstack maps the role to it instead of adding a second plan. The
+  operator owns *what* and *why* (numbered requirements with verifiable
+  acceptance criteria). The agent
   owns *how*: a living plan where every task traces to a requirement and
   links to its proof (branch, SHA, test stamp, deploy). "Done" means
   every criterion is verified.
@@ -110,9 +113,9 @@ a [log](delegated-autonomy/templates/LOG.md), a
 - **Proportionate**: one task or a short chain runs as a sequential
   loop. A graph and an integration branch appear only when the work
   needs them.
-- **The graph lives in `PLAN.md`**: a `Blocked by` and a `Scope` column
-  on the existing task table, pointing at existing tickets instead of
-  copying them. An open question blocks only the tasks that list it.
+- **The graph lives in the existing plan**: `Blocked by`, `Scope` and
+  `Landed` columns on its task table, pointing at existing tickets instead
+  of copying them. An open question blocks only the tasks that list it.
 - **Parallel only when safe**: no shared files or generated artifacts,
   tests still one at a time behind the machine lock, and no more branches
   than the coordinator can review.
@@ -144,7 +147,8 @@ ln -s ~/jstack/delivery-graph ~/.claude/skills/delivery-graph
 project only, copy it into that repository instead:
 
 ```bash
-cp -R jstack/delegated-autonomy jstack/delivery-graph your-repo/.claude/skills/
+mkdir -p your-repo/.claude/skills
+cp -R ~/jstack/delegated-autonomy ~/jstack/delivery-graph your-repo/.claude/skills/
 ```
 
 Then tell your agent:
