@@ -26,8 +26,10 @@ You write one line, from your phone:
 
 The agent then does the following:
 
-1. Records the mandate, with exact end time, goals, free actions and
-   reserved decisions, in its log and in its memory.
+1. Records the mandate, with exact end time, goals, free actions,
+   reserved decisions and AI routing, in its log and in its memory. If
+   you didn't say which AI providers may build and review, it asks once
+   and proposes a default.
 2. Spins up builder agents in isolated git worktrees and has a second
    model review each branch.
 3. Runs the test suite locally, one heavy job at a time, so the machine
@@ -52,8 +54,9 @@ You course-correct now and then. That's the job.
 
 ### The core ideas in `delegated-autonomy`
 
-- **Mandate**: an exact window, goals, free actions and reserved
-  decisions. An approval covers the context it was given in. A false
+- **Mandate**: an exact window, goals, free actions, reserved
+  decisions and AI routing (which providers build, which review, the
+  fallbacks). The agent asks for the routing before it delegates. An approval covers the context it was given in. A false
   premise behind an order means asking, not executing.
 - **Durable context**: three layers on disk: project instructions,
   memory (one fact per file, with *why*), and a timestamped `LOG.md`.
@@ -113,7 +116,8 @@ cp -R jstack/delegated-autonomy your-repo/.claude/skills/
 Then tell your agent:
 
 > *Work autonomously until Friday 18:00. Plan: 1) ... 2) ... 3) ...
-> Real money, production mode changes and anything irreversible need my OK.*
+> Real money, production mode changes and anything irreversible need my OK.
+> Builds on the small model, reviews on a different vendor.*
 
 ---
 

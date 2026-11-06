@@ -12,7 +12,7 @@ the mandate, the gates and the written record.
 
 ## 1. The mandate
 
-A mandate has four parts. Write all of them down the moment you get them:
+A mandate has five parts. Write all of them down the moment you get them:
 
 - **Window**: an exact end time with timezone ("until Monday 2026-11-02
   10:00 CET"). Convert relative dates ("tomorrow", "Sunday 17:00") to
@@ -23,6 +23,19 @@ A mandate has four parts. Write all of them down the moment you get them:
 - **Reserved decisions**: what always needs an explicit OK. Typical
   examples are real money, production mode changes, anything irreversible
   or outward-facing, and new scope.
+- **AI routing**: which providers and models may build, which may review,
+  the fallback order when a quota runs out, and what is off limits (for
+  example "builds on the small model, reviews on another vendor, never
+  provider X"). Note quota or cost limits too.
+
+If the operator grants a window without AI routing, ask once, before the
+first delegation. Propose a default (the operator's last recorded routing,
+or "strong model plans and reviews, small model builds") so they can answer
+"yes" from a phone. Don't block work that needs no sub-agent while you
+wait. Routing changes often, sometimes mid-window ("only provider X for 24
+hours", "quota out, switch reviews"). Log each change with the operator's
+words and an expiry if one was given, keep the current routing in memory,
+and mark the old entry superseded.
 
 Rules:
 
@@ -204,6 +217,9 @@ You coordinate. Builders and reviewers do focused work.
   Template: `templates/BUILDER_BRIEF.md`. Check every path and command
   in the brief before you send it. A wrong path costs the builder an
   hour, or it invents a workaround.
+- **Follow the recorded AI routing** (section 1). It overrides any
+  default here, and an expired routing falls back to the operator's
+  standing preference, not to whatever is convenient.
 - **Pick the cheapest model that can do the task.** Let a strong model
   plan, orchestrate and review independently. Let a small, fast model
   build from a precise brief. A vague brief is the usual reason a small
@@ -313,6 +329,8 @@ keeps improving without the operator repeating themselves.
 - Building something that traces to no requirement, or calling a task
   done without evidence for its acceptance criteria.
 - Following a stale heartbeat prompt instead of the log.
+- Delegating before the AI routing is known, or using a provider the
+  operator excluded.
 - Repeating the full status on every heartbeat tick when nothing changed.
 - Relaunching a dead agent's task from scratch when its worktree still
   holds the work.

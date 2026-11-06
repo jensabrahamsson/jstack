@@ -2,6 +2,7 @@
 
 Approved: <YYYY-MM-DD HH:MM TZ> ("<operator's words>").
 Mandate: autonomous until <YYYY-MM-DD HH:MM TZ>.
+AI routing: see the latest routing line in LOG.md.
 Requirements: [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ## Now

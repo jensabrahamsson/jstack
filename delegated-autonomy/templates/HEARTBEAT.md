@@ -9,8 +9,8 @@ Heartbeat. Read the tail of LOG.md and the "Now" section of PLAN.md; they
 override anything older, including this prompt.
 1. Cheap check: production health, the event you are waiting for, and
    background agents and jobs (finished, stuck, or died with uncommitted work).
-2. If something finished or failed: handle it under the current mandate,
-   log it, and continue the plan.
+2. If something finished or failed: handle it under the current mandate
+   and the current AI routing in the log, log it, and continue the plan.
 3. If the mandate has expired: monitor only; no new reserved-adjacent steps.
 4. If nothing changed: reply in one line. Do not repeat the status or the
    open question.
