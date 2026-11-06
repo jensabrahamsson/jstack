@@ -27,9 +27,9 @@ You write one line, from your phone:
 The agent then does the following:
 
 1. Records the mandate, with exact end time, goals, free actions,
-   reserved decisions and AI routing, in its log and in its memory. If
-   you didn't say which AI providers may build and review, it asks once
-   and proposes a default.
+   reserved decisions, stop rules and AI routing, in its plan, log and
+   memory. If you left out stop rules or which AI providers may build and
+   review, it asks once and proposes a default.
 2. Spins up builder agents in isolated git worktrees and has a second
    model review each branch.
 3. Runs the test suite locally, one heavy job at a time, so the machine
@@ -55,11 +55,13 @@ You course-correct now and then. That's the job.
 ### The core ideas in `delegated-autonomy`
 
 - **Mandate**: an exact window, goals, free actions, reserved
-  decisions and AI routing (which providers build, which review, the
-  fallbacks). The agent asks for the routing before it delegates. An approval covers the context it was given in. A false
+  decisions, stop rules with a safe state, and AI routing (which
+  providers build, which review, the fallbacks). A stop rule stops the
+  item, not the window. Conditional approvals hold only while every
+  condition holds. An approval covers the context it was given in. A false
   premise behind an order means asking, not executing.
-- **Durable context**: three layers on disk: project instructions,
-  memory (one fact per file, with *why*), and a timestamped `LOG.md`.
+- **Durable context** on disk: project instructions, memory (one fact
+  per file, with *why*), a timestamped `LOG.md`, and the plan.
   Context is a budget, so verify memories against the live system before
   acting on them.
 - **REQUIREMENTS.md, PLAN.md and LOG.md**: what, how and what happened. The operator owns *what* and *why*
@@ -80,17 +82,26 @@ You course-correct now and then. That's the job.
 - **Heartbeats**: a recurring check-in runs one cheap check, follows the
   log rather than its own possibly stale text, and stays to one line when
   nothing changed.
-- **Model routing**: a strong model plans and reviews, a small fast model
-  builds from a precise brief.
-- **Test the way production runs**: a fail-closed check that passes as
-  you can block everything as the service user.
+- **Evidence**: collect what only the current state can show before any
+  rollback, and prove a source would have recorded X before concluding
+  that X never happened.
+- **Test the way production runs**: check that the suite really ran, and
+  match production's user, privileges, versions and data shapes. A
+  fail-closed check that passes for you can block everything for the
+  service user.
+- **Shared machine**: other sessions share the checkout and the RAM, so
+  one heavy job per machine behind a lock, explicit staging, and no stash.
+- **Memory that stays current**: rewrite in place, expire what ended, and
+  "dream" between windows: a backed-up consolidation pass that merges,
+  rewrites and expires memories and rebuilds the index.
 - **Communication**: short status, questions answerable in one line, and
   loud reports of what did *not* happen.
 
 Templates are included: [requirements](delegated-autonomy/templates/REQUIREMENTS.md),
 a [plan](delegated-autonomy/templates/PLAN.md), a [builder brief](delegated-autonomy/templates/BUILDER_BRIEF.md),
 a [log](delegated-autonomy/templates/LOG.md), a
-[heartbeat prompt](delegated-autonomy/templates/HEARTBEAT.md) and a
+[heartbeat prompt](delegated-autonomy/templates/HEARTBEAT.md), a
+[dream prompt](delegated-autonomy/templates/DREAM.md) and a
 [memory file](delegated-autonomy/templates/memory-example.md).
 
 ---

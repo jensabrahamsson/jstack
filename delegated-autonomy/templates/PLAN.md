@@ -1,8 +1,15 @@
 # Plan: <project or goal>
 
 Approved: <YYYY-MM-DD HH:MM TZ> ("<operator's words>").
-Mandate: autonomous until <YYYY-MM-DD HH:MM TZ>.
-AI routing: see the latest routing line in LOG.md.
+
+## Current mandate (rewritten in place; changes go to LOG.md)
+- Window: until <YYYY-MM-DD HH:MM TZ>
+- Free: <...>
+- Reserved: <...>
+- Stop rules and safe state: <...>
+- Conditional approvals: <"operator's words"> (conditions: <...>)
+- AI routing: build <...>, review <...>, fallback <...>, never <...>; expires <...>
+
 Requirements: [REQUIREMENTS.md](REQUIREMENTS.md)
 
 ## Now
