@@ -31,14 +31,29 @@ A mandate has six parts. Write all of them down the moment you get them:
 - **AI routing**: which providers and models may build, which may review,
   the fallback order when a quota runs out, and what is off limits (for
   example "builds on the small model, reviews on another vendor, never
-  provider X"). Note quota or cost limits too.
+  provider X"). Note quota or cost limits too. Routing separates three
+  roles: one model plans, a cheaper model builds against the plan's fixed
+  contracts, and a different model reviews. The builder never reviews its
+  own work. Simple bounded builds and early reviews may run on cheaper or
+  non-Anthropic models of any vendor; the final review before merge or
+  deploy runs on a top-tier Anthropic model. Never route to a model the
+  operator banned, whatever the quota pressure.
 
 If the operator grants a window without stop rules or AI routing, ask once,
 before the first risky step or the first delegation. Propose a default
 (the operator's last recorded choice, or "stop the item on any red gate,
 leave production as it was"; "strong model plans and reviews, small model
-builds") so they can answer "yes" from a phone. Don't block other work
+builds, final review on a top-tier model, builder never its own reviewer")
+so they can answer "yes" from a phone. Don't block other work
 while you wait.
+
+**Reports from another vendor's model are unverified leads, not facts.**
+An external model's analysis once invented counts and code symbols that
+did not exist; independent verification against the code and data caught
+it. Before you quote its numbers or act on its claims, reproduce each one
+from the repository, the logs or the system's own records, and record what
+you checked. The same rule covers the output of local models and other
+agent CLIs (see "Local models and other agent CLIs" below).
 
 Rules:
 
@@ -90,6 +105,14 @@ since replaced.
 - A long-running watcher (a loop waiting for a marker or an event) is
   better than polling by hand. Start it once, record its ID, and don't
   start a second one.
+- **Session-scoped schedules expire.** A schedule that lives in the chat
+  session (typically about 7 days) must never own a heartbeat or a
+  critical check. Move heartbeats and every critical schedule to the OS
+  scheduler (launchd, systemd timers) or to server-side timers, and record
+  where each one lives. Server-side stop rules must not depend on the
+  laptop or the chat session being alive. Stop safety timers during deploy
+  windows, and reset their failure counters after a verified postflight,
+  so a long deploy cannot trip them.
 
 Template: `templates/HEARTBEAT.md`.
 
@@ -218,6 +241,11 @@ Rules:
 - **The plan is a living document.** Update task status, the branch, the
   merge SHA and the evidence (test stamp, deploy SHA) as you go. A
   finished task links to its proof.
+- **Estimate in agent-hours, not human time.** Human-time estimates are
+  systematically wrong for agent work: a port or rewrite quoted in weeks
+  can turn out to be hours. Quote agent-hours per task, and re-check any
+  inherited assumption about what a port or rewrite costs before you plan
+  around it.
 - **Material plan changes need approval:** reordering priorities,
   dropping a task, or adding a reserved action. Small corrections don't;
   log them.
@@ -257,6 +285,13 @@ Fix the memory at once.
 A decision record answers who decided, when, what exactly, on what
 evidence, and how to roll it back. "We agreed on X" with no source is
 not a decision record.
+
+Keep the project's strategy or decision document living: every claim is
+labelled **Verified**, **Measured**, **Proposed** or **Open**; dated
+decisions quote the operator in the repo's language (marked
+"(translated)" when the operator wrote in another language); a change log
+lists every study and decision that moved a claim between labels. Update
+it after every study and every decision, not at the end of the window.
 
 ## 2c. Bind everything to a SHA
 
@@ -299,7 +334,12 @@ You coordinate. Builders and reviewers do focused work.
   exact test commands, resource limits, and the report file to write.
   Template: `templates/BUILDER_BRIEF.md`. Check every path and command
   in the brief before you send it. A wrong path costs the builder an
-  hour, or it invents a workaround.
+  hour, or it invents a workaround. Every brief carries stop-and-ask
+  rules: if the change would alter a decision path (money, safety,
+  user-visible behaviour), the builder stops after the mapping and
+  reports instead of applying it. If the brief hands the builder a
+  report written by another vendor's model, mark it as an unverified
+  lead and require independent verification before use.
 - **Follow the recorded AI routing.** Within it, pick the cheapest model
   that can do the task: a strong model plans, orchestrates and reviews
   independently; a small, fast model builds from a precise brief. A vague
@@ -309,9 +349,11 @@ You coordinate. Builders and reviewers do focused work.
   (builder, reviewer, retry, your own), add its id, role, task and attempt
   to the usage attribution file (`openai-usage`). Attribution written
   afterwards is a guess.
-- **Builders commit early.** Use small commits on their branch, or a WIP
-  commit before any long wait. An agent can die at any moment, and
-  uncommitted work in a worktree is the easiest work to lose.
+- **Builders commit early.** Ask long-running builders for a WIP commit
+  early, and another before any long wait, so the work survives
+  interruptions. An agent can die at any moment, and uncommitted work in
+  a worktree is the easiest work to lose. Squash or tidy the WIP commits
+  later, at review or integration time.
 - **Builders clean up after themselves.** They stop their own watchers,
   timers and background processes before they report. A finished agent
   whose monitor keeps firing wastes the coordinator's context.
@@ -325,10 +367,12 @@ You coordinate. Builders and reviewers do focused work.
   that both of them touch. Fix that in its own commit on the merged tip,
   and say what you regenerated and why.
 - **Clean up worktrees as part of the merge.** Archive `.handoff/`,
-  remove the worktree, and delete the branch once it is merged. Record
+  remove the merged worktree and its branch right after the merge, so
+  stale worktrees never pile up. Record
   the branch tip and the landing commit in the plan when you merge, and
   delete only when the tip is unchanged and the landing commit is in
-  `main`. Git's own signals (`--is-ancestor`, `git cherry`, `merge-tree`)
+  `main`. Never treat a branch with zero own commits as merged: it may be
+  a fresh builder worktree that just started. Git's own signals (`--is-ancestor`, `git cherry`, `merge-tree`)
   are heuristics: tested on 13 merge shapes, they miss squash and rebase
   merges that needed conflict resolution; see
   `reference/merged-branch-check.md`. Never force-delete a branch that
@@ -347,11 +391,23 @@ processes.
   example `flock <shared path>/heavy.lock <command>` on Linux; macOS has
   no `flock`, so use an atomic `mkdir <shared path>/heavy.lock` that the
   holder removes on exit) and put the lock
-  command in every brief. Parallel suites crash workstations.
+  command in every brief. Parallel suites crash workstations: memory
+  pressure on a shared machine is the usual cause.
+- **Branch gates run impacted tests, not the full suite.** Select the
+  tests to run from per-test coverage contexts recorded for the
+  repository, and run only the tests the change can affect. The full
+  suite is for release stamps only, plus a nightly scheduled job (launchd
+  or systemd) that also rebuilds the coverage map the selection reads.
 - Any watchdog kills only its own process tree, never by process name.
   The operator runs other jobs on the same machine.
 - Kill by recorded PID. Broad `pkill -f` patterns can match the tool
   shell itself.
+- **Secrets for analysis jobs travel by file, never by chat.** Copy the
+  secret to a file with mode `0600` without printing it, test that it
+  works, and delete it afterwards. An agent that received secret-use
+  approval only second-hand (through you, not from the operator) may
+  rightly refuse: get the operator's approval in the operator's own
+  words before you pass the secret on.
 
 ## 5. Gates before anything leaves the machine
 
@@ -371,6 +427,13 @@ processes.
   documentation.
 - A red test, an unexpected dry-run result or a failed postflight is a
   stop rule: stop that item and report it (section 1).
+- **Measure before you remove.** Map everything a component's output
+  feeds, then replay recorded history with and without it before you
+  delete it. A tool that looks dead can still feed a decision path; only
+  a replay that shows zero effect makes the removal safe.
+- **Map before you flip a flag.** A flag named for one thing may gate
+  another: map every check the flag controls first, and give the other
+  check its own flag before you change the shared one.
 
 ### Evidence before you change state
 
@@ -378,6 +441,9 @@ processes.
   evidence that only the current state can produce: verifier reports,
   live state, logs that rotate on restart. Copy it into the backup
   unchanged. Then change state.
+- **Run the terminal verifier before a canary rollback.** A canary's
+  evidence is lost the moment it is torn down, so verify first and roll
+  back second.
 - A rollback is a change. Dry-run it, verify it, and run the next planned
   gate's dry run right away, so drift shows up now and not in the next
   deploy window.
@@ -440,8 +506,44 @@ and every action stays blocked while all the tests pass.
 - Be loud when something did **not** happen ("NOT deployed: dry run
   refused"). Say so when you were idle or a step was skipped. Never let
   silence imply progress.
+- **Deploy-approval pauses are loud by construction.** An autonomy window
+  names its scope, end time and stop rules up front; when a deploy waits
+  on the operator, the report opens with "**NOT deployed**" as its first
+  line and, where a push notification channel exists, sends one. The
+  operator must never have to open a log to learn that nothing shipped.
 - Report failures with the evidence. Own your mistakes in the log, fix
   them, and turn the lesson into a memory.
+
+## Local models and other agent CLIs
+
+A builder or reviewer does not have to run on the same CLI or the same
+vendor as the coordinator. Local models through OpenCode (Ollama, LM
+Studio) and third-party agent CLIs (for example Codex, Muse, or
+agy/Gemini) are useful inside the routing recorded in the mandate, under
+the same rules as any other builder.
+
+**OpenCode with local models** fits bounded tasks: formatting, docs,
+simple refactors with tests, log triage, and first-pass reviews. Its
+limits set the boundary: small context windows, unreliable tool use on
+long multi-step work, and no access to secrets or production. Give it
+narrow briefs with exact files and test commands, and put its output
+through the same independent review as any builder's.
+
+**Other agent CLIs in headless mode** need permission handling, not
+trust:
+
+- Never pass a skip-all-permissions flag on a machine with production
+  access. Run them behind a command allow-list, and give them narrow
+  read-only wrapper scripts (a read-only database session, read-only
+  file stores, log grep) instead of raw credentials or write access.
+- Know each CLI's sandbox limits before you brief it. Some cannot commit
+  inside linked worktrees: then the builder leaves its changes
+  uncommitted and the coordinator inspects and commits them. Record the
+  limit in the plan so the next brief already accounts for it.
+- Record each CLI's quota alongside the AI routing, and queue work when
+  it runs out instead of rerouting to a model the operator banned.
+- Keep every report they produce as an unverified lead until you have
+  checked it against the code and the data (section 1).
 
 ## Anti-patterns
 
@@ -451,3 +553,4 @@ and every action stays blocked while all the tests pass.
 - Stopping the whole window because one item hit a stop rule.
 - Rolling back before collecting the evidence the current state holds.
 - Concluding "it didn't happen" from a source that never records it.
+- Quoting another model's report as fact without independent verification.

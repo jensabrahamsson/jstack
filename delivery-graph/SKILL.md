@@ -130,12 +130,16 @@ With an integration branch:
    integration branch with a merge commit. Don't rebase or squash a
    reviewed branch: the review is bound to its SHA.
 3. Run the task's targeted checks on the new integration tip, mark the
-   task `integrated` and recompute the frontier.
+   task `integrated` and recompute the frontier. Select the targeted
+   checks from the repository's per-test coverage contexts: run the
+   tests the merged change can affect, not the full suite.
 4. When every task is integrated, the tip is the **candidate**. Run the
    full suite on it behind the lock, and have a fresh reviewer read the
    combined diff (`git diff main...<candidate sha>`, which leaves out
    anything merged from main) for how the tasks interact. Bind both
-   results to the candidate SHA.
+   results to the candidate SHA. The full suite is for candidates and
+   release stamps; branch gates stay on impacted tests, and a nightly
+   scheduled job runs the full suite and rebuilds the coverage map.
 5. Any later commit (a fix, a merge from main) makes a new candidate.
    Rerun the checks. Old evidence doesn't carry over.
 6. Mark tasks `verified` once the candidate's checks prove their
@@ -169,6 +173,21 @@ With an integration branch:
 Branches that pass one by one are not evidence that the whole works.
 Only checks on the candidate count.
 
+### New behaviour lands as a narrow lane
+
+When a task changes behaviour the system already has (a rule, a default,
+a decision path), don't edit the global rule in place. Ship the new
+behaviour as a narrow lane beside it: its own flags, its own approval
+records, and its own server-side stop rules, covering a small slice of
+traffic or cases first. Only when the lane's evidence is in, move the
+rest over and retire the old path.
+
+After several lanes, the rules file becomes a list of special cases.
+Refactor it then into data plus a resolver: the rules live in a table or
+config the operator can read, the code resolves them, and the remaining
+explicit exceptions are each approved and recorded. A new exception is a
+plan change, not a quiet edit.
+
 ## 6. When things go wrong
 
 | Event | Do this |
@@ -179,6 +198,7 @@ Only checks on the candidate count.
 | A blocker changed after a dependent task started | Keep the dependent branch. Merge it into the integration branch and run its checks there; don't ask the builder to rebase |
 | A task hits a stop rule | Mark it `stopped`. Its dependents stay `blocked` on it; independent tasks continue (§1). Don't merge it. If it is already merged and causes a failure, revert it on the integration branch in its own commit. Landing without it is a plan change (§2) |
 | A builder died or was stopped | Inspect its worktree, commit the WIP, and resume with a brief that names that commit (§2). Don't relaunch from scratch |
+| A canary must roll back | Run its terminal verifier first, then roll back. Tearing the canary down destroys its evidence (§5 of delegated-autonomy) |
 | Resume after a crash | Rebuild the frontier from the plan file and git, not from memory: which task branches exist, which are merged (the `Landed` record matches, see [`merged-branch-check.md`](../delegated-autonomy/reference/merged-branch-check.md); a branch that only looks unmerged is kept, never force-deleted), which worktrees hold uncommitted work, which agents are alive |
 
 Clean up task worktrees and branches as §3 says. Delete the integration

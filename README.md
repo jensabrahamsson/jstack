@@ -82,6 +82,18 @@ You course-correct now and then. That's the job.
 - **Coordinator and sub-agents**: one worktree per task, briefs as the
   only context, review by another model, and verification by the
   coordinator.
+- **Model routing with three roles**: one model plans, a cheaper model
+  builds against fixed contracts, a different model reviews, and the
+  builder never reviews its own work. Bounded builds and early reviews
+  may run on cheaper or other-vendor models; the final review before
+  merge or deploy runs on a top-tier model, never one the operator
+  banned. Another model's report is an unverified lead until it is
+  checked against the code and the data.
+- **Local models and other agent CLIs**: OpenCode with local models for
+  bounded tasks (formatting, docs, simple refactors with tests, log
+  triage, first-pass reviews), third-party CLIs behind command
+  allow-lists and read-only wrappers, and the same independent review
+  for all of their output.
 - **Gates**: local tests, a dry run before every apply, postflight
   evidence, and no shortcuts past a refusal.
 - **Heartbeats**: a recurring check-in runs one cheap check, follows the
@@ -100,7 +112,8 @@ You course-correct now and then. That's the job.
   "dream" between windows: a backed-up consolidation pass that merges,
   rewrites and expires memories and rebuilds the index.
 - **Communication**: short status, questions answerable in one line, and
-  loud reports of what did *not* happen.
+  loud reports of what did *not* happen. A deploy waiting on approval
+  opens with "NOT deployed" as its first line.
 
 Templates are included: [requirements](delegated-autonomy/templates/REQUIREMENTS.md),
 a [plan](delegated-autonomy/templates/PLAN.md), a [builder brief](delegated-autonomy/templates/BUILDER_BRIEF.md),
@@ -134,6 +147,13 @@ a [log](delegated-autonomy/templates/LOG.md), a
 - **Recovery**: conflicts, a moved main, a failing candidate, a stopped
   task and a dead builder each have one rule. A stop on one task never
   stops independent tasks.
+- **Impacted tests on branches, the full suite on the candidate**:
+  branch gates run the tests a change can affect (selected from
+  per-test coverage), the full suite proves the combined candidate and
+  stamps releases, and a nightly job reruns it and rebuilds the map.
+- **Narrow lanes for behaviour change**: new behaviour ships beside the
+  old rule with its own flags, approvals and stop rules, and scattered
+  exceptions later refactor into data plus a resolver.
 
 ### The core ideas in `openai-usage`
 
