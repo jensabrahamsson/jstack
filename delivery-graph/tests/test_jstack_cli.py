@@ -681,3 +681,14 @@ class RepairSeconds(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_save_plan_keeps_file_mode(tmp_path):
+    import stat
+    import jstack_cli
+    plan = tmp_path / "PLAN.md"
+    plan.write_text("x\n```jstack-graph\n{\"version\": 1, \"tasks\": []}\n```\n", encoding="utf-8")
+    plan.chmod(0o644)
+    text, graph = jstack_cli.load_plan(str(plan))
+    jstack_cli.save_plan(str(plan), text, graph)
+    assert stat.S_IMODE(plan.stat().st_mode) == 0o644
