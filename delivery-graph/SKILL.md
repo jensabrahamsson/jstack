@@ -110,6 +110,18 @@ the `jstack` entry script next to it.
 | `jstack status [--write]` | The generated status view plus restart checks for every task (below). `--write` re-renders the view into the plan |
 | `jstack transition T3 <status>` | The only way status changes. Refuses illegal moves and moves whose evidence does not hold (below); writes the block and the generated view back |
 | `jstack render [--write]` | Print or write the generated status view |
+| `jstack record-review T3 --sha S --verdict pass\|fail --reviewer R` | Record review evidence (full 40-hex SHA) without editing the JSON block by hand |
+| `jstack record-verification T3 --command C --result pass\|fail --revision S --environment E --criteria AC1,AC2` | Append a verification record at an exact revision |
+| `jstack record-attempt T3 --failure-signature F --diagnosis D --result pass\|fail [--started-at T --ended-at T]` | Append a repair attempt (ISO timestamps feed `repair.max_seconds`) |
+| `jstack set-tip T3 --sha S` | Record the branch tip SHA (full 40-hex) |
+
+Writes are atomic and locked: each write goes to a temp file in the
+same directory and `os.replace`s it over the plan (a crash mid-write
+leaves the old file intact), and `transition`, `record-*`, `set-tip`,
+`render --write` and `status --write` re-read the plan under an
+advisory `fcntl.flock` on `<plan>.jstack.lock`, so two agents cannot
+lose each other's update. On Windows (no `fcntl`) writes stay atomic
+but are unlocked.
 
 Rules are enforced only where work goes through the CLI: a task starts
 with `transition <task> in_progress`, integrates with
@@ -121,25 +133,39 @@ every guard and is not allowed during a run.
 -> integrated -> verified -> done`, with `repairing` as the bounded
 in-task loop (`in_progress`/`review -> repairing -> in_progress`),
 `blocked` for budget exhaustion, and `stopped` from any live state.
-Guards beyond the shape: starting needs satisfied blockers, no scope
-overlap with an in-progress task, and no branch already in flight;
-`review -> integrated` needs a passing review whose SHA equals the
-current branch head and passing verifications at that exact revision
-covering every acceptance criterion of the task; `integrated ->
-verified` needs the same coverage at the recorded `candidate_sha`;
-`verified -> done` needs a `landed` record that git proves is in
-`main`. A green result on old code, or one covering only part of the
-requirement, is therefore detected, not trusted.
+Guards beyond the shape: every transition into `in_progress`
+(`ready`, `repairing` and `review` alike) runs the same start guard —
+satisfied blockers, no scope overlap with an in-progress task, and no
+branch already in flight; `review -> integrated` needs a passing
+review whose SHA equals the current branch head, passing
+verifications at that exact revision covering every acceptance
+criterion of the task, and proof the reviewed SHA is in the
+integration branch (`integration_branch`, default `main`:
+`merge-base --is-ancestor <review.sha> <branch>`, or a `landed`
+record whose landing SHA is in that branch) — recording `integrated`
+without merging first is refused; `integrated -> verified` needs the
+same coverage at the recorded `candidate_sha`; `verified -> done`
+needs a `landed` record that git proves is in the delivery branch
+(graph field `delivery_branch`, default `main`). `done` only checks
+that ancestry: pushing or deploying past the delivery branch remains
+an operator step, never something the CLI does. A green result on
+old code, or one covering only part of the requirement, is therefore
+detected, not trusted.
 
 **Verification is structured data.** Each record names `command`,
 `result`, `revision`, `environment` and the `criteria` it covers. There
 is no bare "green": a check counts only for the revision and criteria
-recorded on it.
+recorded on it. Record evidence with `record-review`,
+`record-verification`, `record-attempt` and `set-tip` (they validate
+full 40-hex SHAs and write under the lock); do not hand-edit the block.
 
 **Bounded repair.** The graph is acyclic; the loop inside a task
 (build, test, review, repair) is separate and bounded by
-`repair.max_attempts` (and an optional `max_seconds` budget recorded for
-the coordinator). Entering or leaving `repairing` past the budget is
+`repair.max_attempts`. `repair.max_seconds` is enforced only when
+attempts carry `started_at`/`ended_at` ISO timestamps: the summed
+durations over `max_seconds` exhaust the budget, exactly like
+`max_attempts`; attempts without timestamps do not count against it.
+Entering or leaving `repairing` past the budget is
 refused and the task goes to `blocked`: a new diagnosis is required.
 When the same `failure_signature` repeats, a retry is refused until the
 latest attempt records a different `diagnosis`. A failure in joint

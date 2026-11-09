@@ -45,13 +45,18 @@ as `-`.
 Machine-readable graph (single source of truth for status; the table
 above is its generated view). Validate and drive transitions with the
 `delivery-graph` CLI: `jstack validate|ready|check <task>|status|transition`.
+Record evidence with `jstack record-review|record-verification|record-attempt|set-tip`
+(full 40-hex SHAs; locked atomic writes) instead of hand-editing the block.
 Keep one block per plan file. `verifications[].criteria` lists the
 acceptance-criteria IDs that check proves, at that exact `revision`.
+`delivery_branch` (default `main`) is the branch `done` must be proven
+in; pushing/deploying past it remains an operator step.
 
 ```jstack-graph
 {
   "version": 1,
   "integration_branch": null,
+  "delivery_branch": "main",
   "candidate_sha": null,
   "questions": [{"id": "Q1", "answered": false}],
   "tasks": [
