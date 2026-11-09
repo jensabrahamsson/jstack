@@ -9,14 +9,20 @@ the same data. The JSON block is the single source of truth; the rendered
 view between the jstack:status markers is generated, never hand-edited.
 
 Python 3.10+ standard library only. No network, no writes except
-`transition` and `render --write` / `status --write`, which rewrite the
-plan file in place.
+`transition`, the `record-*` / `set-tip` commands and
+`render --write` / `status --write`. Every write replaces the plan
+atomically (temp file in the same directory + `os.replace`, so a crash
+mid-write leaves the old file intact) and is serialized across
+processes with an advisory lock (`fcntl.flock` on the sibling
+`<plan>.jstack.lock` file). On platforms without `fcntl` (Windows)
+the write is still atomic but falls back to no lock.
 
 Graph shape (all task fields except id/status optional but validated):
 
     {
       "version": 1,
       "integration_branch": "int/<goal>",
+      "delivery_branch": "main",
       "candidate_sha": "<full sha>",
       "questions": [{"id": "Q1", "answered": true}],
       "tasks": [{
@@ -44,12 +50,20 @@ it creates a new correction task with its own evidence.
 """
 
 import argparse
+import contextlib
+import datetime
 import fnmatch
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
+
+try:
+    import fcntl
+except ImportError:  # Windows: atomic writes still apply, no lock.
+    fcntl = None
 
 STATUSES = ("blocked", "ready", "in_progress", "review", "repairing",
             "integrated", "verified", "done", "stopped")
@@ -98,6 +112,43 @@ def load_plan(path):
     return text, graph
 
 
+SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
+
+_held_locks = set()
+
+
+def lock_path_for(plan_path):
+    return "%s.jstack.lock" % plan_path
+
+
+@contextlib.contextmanager
+def plan_lock(plan_path):
+    """Advisory cross-process lock on `<plan>.jstack.lock` (POSIX).
+
+    Re-entrant within one process for the same plan. On platforms
+    without `fcntl` (Windows) this is a no-op: writes remain atomic
+    via `save_plan`, but concurrent writers are not serialized.
+    """
+    if fcntl is None:
+        yield
+        return
+    key = os.path.abspath(plan_path)
+    if key in _held_locks:
+        yield
+        return
+    handle = open(lock_path_for(plan_path), "a+", encoding="utf-8")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        _held_locks.add(key)
+        try:
+            yield
+        finally:
+            _held_locks.discard(key)
+            fcntl.flock(handle, fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 def save_plan(path, text, graph):
     block = "```jstack-graph\n%s\n```" % json.dumps(graph, indent=2)
     new_text, count = BLOCK_RE.subn(lambda _m: block, text, count=1)
@@ -107,8 +158,20 @@ def save_plan(path, text, graph):
         view = "%s\n%s\n%s" % (VIEW_START, render_status(graph), VIEW_END)
         new_text = re.sub(re.escape(VIEW_START) + r".*?" + re.escape(VIEW_END),
                           lambda _m: view, new_text, flags=re.DOTALL)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(new_text)
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp = tempfile.mkstemp(dir=directory, prefix=".jstack-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(new_text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     return new_text
 
 
@@ -201,9 +264,18 @@ def validate(graph):
         if repair:
             if not isinstance(repair.get("max_attempts"), int) or repair["max_attempts"] < 1:
                 errors.append("%s: repair.max_attempts must be a positive integer" % tid)
+            if repair.get("max_seconds") is not None and (
+                    not isinstance(repair.get("max_seconds"), (int, float))
+                    or isinstance(repair.get("max_seconds"), bool)
+                    or repair["max_seconds"] < 0):
+                errors.append("%s: repair.max_seconds must be a non-negative number" % tid)
             for i, att in enumerate(repair.get("attempts") or []):
                 if not att.get("failure_signature"):
                     errors.append("%s: repair.attempts[%d] missing failure_signature" % (tid, i))
+                for field in ("started_at", "ended_at"):
+                    if att.get(field) and _parse_iso(att[field]) is None:
+                        errors.append("%s: repair.attempts[%d] %s is not an ISO timestamp"
+                                      % (tid, i, field))
     cycle = find_cycle(graph)
     if cycle:
         errors.append("dependency cycle: %s" % " -> ".join(cycle))
@@ -283,18 +355,54 @@ def repeated_failure(task):
             attempts[-2].get("failure_signature"))
 
 
+def _parse_iso(value):
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed
+
+
+def repair_seconds(task):
+    """Summed attempt durations; only attempts carrying both
+    `started_at` and `ended_at` ISO timestamps contribute."""
+    total = 0.0
+    for att in (task.get("repair") or {}).get("attempts") or []:
+        start, end = _parse_iso(att.get("started_at")), _parse_iso(att.get("ended_at"))
+        if start is not None and end is not None:
+            total += max(0.0, (end - start).total_seconds())
+    return total
+
+
 def repair_errors(task, new_status):
     """Guards for leaving `repairing` and for entering it."""
     errors = []
     repair = task.get("repair") or {}
     attempts = repair.get("attempts") or []
     max_attempts = repair.get("max_attempts")
+    max_seconds = repair.get("max_seconds")
+    seconds = repair_seconds(task)
+    seconds_exhausted = (isinstance(max_seconds, (int, float))
+                         and not isinstance(max_seconds, bool)
+                         and seconds > max_seconds)
     if new_status == "repairing":
         if isinstance(max_attempts, int) and len(attempts) >= max_attempts:
             errors.append("%s: repair budget exhausted (%d/%d attempts); "
                           "new diagnosis required before more repair"
                           % (task["id"], len(attempts), max_attempts))
+        if seconds_exhausted:
+            errors.append("%s: repair budget exhausted (%.0f/%s seconds); "
+                          "new diagnosis required before more repair"
+                          % (task["id"], seconds, max_seconds))
     if new_status == "in_progress" and task.get("status") == "repairing":
+        if seconds_exhausted:
+            errors.append("%s: repair budget exhausted (%.0f/%s seconds); "
+                          "transition to blocked instead: new diagnosis required"
+                          % (task["id"], seconds, max_seconds))
         if isinstance(max_attempts, int) and len(attempts) >= max_attempts:
             errors.append("%s: repair budget exhausted (%d/%d attempts); "
                           "transition to blocked instead: new diagnosis required"
@@ -429,12 +537,14 @@ def restart_warnings(graph, repo):
             head = branch_head(repo, branch)
             if head:
                 got = run_git(repo, "rev-list", "--count", "HEAD..%s" % branch)
+                ahead = got[1] if got and got[0] == 0 else "?"
                 if task.get("tip_sha") and task["tip_sha"] != head:
                     warnings.append("%s: saved tip %s != branch head %s; "
                                     "branch moved since the plan was written" % (tid, task["tip_sha"], head))
                 elif not task.get("tip_sha"):
-                    warnings.append("%s: %s but branch %s already exists; "
-                                    "do not start a duplicate" % (tid, status, branch))
+                    warnings.append("%s: %s but branch %s already exists "
+                                    "(%s commits ahead of HEAD); "
+                                    "do not start a duplicate" % (tid, status, branch, ahead))
         if status in ("review", "in_progress", "repairing") and branch and task.get("tip_sha"):
             head = branch_head(repo, branch) if repo else None
             if head and head != task["tip_sha"]:
@@ -446,6 +556,43 @@ def restart_warnings(graph, repo):
 # --------------------------------------------------------------------------
 # Transition guards (step 2: controlled status transitions)
 # --------------------------------------------------------------------------
+
+def delivery_branch(graph):
+    return graph.get("delivery_branch") or "main"
+
+
+def integration_branch(graph):
+    return graph.get("integration_branch") or "main"
+
+
+def warn_mentions_task(warn, tid):
+    """Exact-id token match: T1 must not match T10."""
+    return bool(re.search(r"(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])"
+                          % re.escape(tid), warn))
+
+
+def start_guard_errors(graph, task):
+    """Guards shared by every transition into `in_progress`."""
+    errors = []
+    tid = task["id"]
+    unmet = [d for d in task.get("blocked_by") or [] if not blocker_satisfied(graph, d)]
+    if unmet:
+        errors.append("%s: cannot start; blockers not satisfied: %s" % (tid, ", ".join(unmet)))
+    for other in graph["tasks"]:
+        if other["id"] != tid and other.get("status") == "in_progress":
+            for a in task.get("scope") or []:
+                for b in other.get("scope") or []:
+                    if scopes_overlap(a, b):
+                        errors.append("%s: scope %s overlaps in-progress %s scope %s; "
+                                      "serialize or merge the tasks" % (tid, a, other["id"], b))
+    if task.get("branch"):
+        for other in graph["tasks"]:
+            if other["id"] != tid and other.get("branch") == task["branch"] \
+                    and other.get("status") in ("in_progress", "review", "repairing"):
+                errors.append("%s: branch %s already in flight on %s; duplicate start refused"
+                              % (tid, task["branch"], other["id"]))
+    return errors
+
 
 def transition_errors(graph, task, new_status, repo):
     errors = []
@@ -462,23 +609,8 @@ def transition_errors(graph, task, new_status, repo):
         if unmet:
             errors.append("%s: cannot become ready; blockers not satisfied: %s"
                           % (tid, ", ".join(unmet)))
-    if new_status == "in_progress" and old == "ready":
-        unmet = [d for d in task.get("blocked_by") or [] if not blocker_satisfied(graph, d)]
-        if unmet:
-            errors.append("%s: cannot start; blockers not satisfied: %s" % (tid, ", ".join(unmet)))
-        for other in graph["tasks"]:
-            if other["id"] != tid and other.get("status") == "in_progress":
-                for a in task.get("scope") or []:
-                    for b in other.get("scope") or []:
-                        if scopes_overlap(a, b):
-                            errors.append("%s: scope %s overlaps in-progress %s scope %s; "
-                                          "serialize or merge the tasks" % (tid, a, other["id"], b))
-        if task.get("branch"):
-            for other in graph["tasks"]:
-                if other["id"] != tid and other.get("branch") == task["branch"] \
-                        and other.get("status") in ("in_progress", "review", "repairing"):
-                    errors.append("%s: branch %s already in flight on %s; duplicate start refused"
-                                  % (tid, task["branch"], other["id"]))
+    if new_status == "in_progress":
+        errors.extend(start_guard_errors(graph, task))
     if new_status == "review" and not task.get("tip_sha"):
         errors.append("%s: cannot enter review without a recorded tip_sha" % tid)
     if new_status == "integrated":
@@ -492,6 +624,22 @@ def transition_errors(graph, task, new_status, repo):
                           % (tid, review["sha"], head))
         if review.get("sha"):
             errors.extend(verification_errors(task, review["sha"], "reviewed"))
+        if repo and review.get("sha"):
+            target = integration_branch(graph)
+            anc = run_git(repo, "merge-base", "--is-ancestor", review["sha"], target)
+            proved = bool(anc and anc[0] == 0)
+            if not proved:
+                landed = task.get("landed") or {}
+                if landed.get("landing_sha"):
+                    lanc = run_git(repo, "merge-base", "--is-ancestor",
+                                   landed["landing_sha"], target)
+                    proved = bool(lanc and lanc[0] == 0)
+            if not proved:
+                errors.append("%s: review -> integrated needs proof that reviewed "
+                              "SHA %s is in integration branch %s "
+                              "(merge-base --is-ancestor failed and no landed "
+                              "record proves it); merge it first"
+                              % (tid, review["sha"], target))
     if new_status == "verified":
         candidate = graph.get("candidate_sha")
         errors.extend(verification_errors(task, candidate, "candidate"))
@@ -501,7 +649,7 @@ def transition_errors(graph, task, new_status, repo):
             errors.append("%s: verified -> done needs a landed record "
                           "(tip_sha and landing_sha)" % tid)
         elif repo:
-            merged, reason = is_merged(task, repo)
+            merged, reason = is_merged(task, repo, delivery_branch(graph))
             if not merged:
                 errors.append("%s: not landed: %s" % (tid, reason))
     errors.extend(repair_errors(task, new_status))
@@ -552,6 +700,74 @@ def report_errors(errors, ok_message=None):
     return 1 if errors else 0
 
 
+RECORD_COMMANDS = ("record-review", "record-verification", "record-attempt", "set-tip")
+
+
+def _valid_sha(value):
+    return bool(value and SHA_RE.match(value))
+
+
+def _record_errors(args):
+    errors = []
+    if args.command in ("record-review", "set-tip") and not _valid_sha(args.sha):
+        errors.append("%s: --sha must be a full 40-hex SHA" % args.task)
+    if args.command == "record-verification":
+        if not _valid_sha(args.revision):
+            errors.append("%s: --revision must be a full 40-hex SHA" % args.task)
+        if not [c for c in (p.strip() for p in args.criteria.split(",")) if c]:
+            errors.append("%s: --criteria must name at least one criterion" % args.task)
+        if not args.command_text.strip():
+            errors.append("%s: --command must not be empty" % args.task)
+        if not args.environment.strip():
+            errors.append("%s: --environment must not be empty" % args.task)
+    if args.command == "record-review" and not args.reviewer.strip():
+        errors.append("%s: --reviewer must not be empty" % args.task)
+    if args.command == "record-attempt":
+        if not args.failure_signature.strip():
+            errors.append("%s: --failure-signature must not be empty" % args.task)
+        if not args.diagnosis.strip():
+            errors.append("%s: --diagnosis must not be empty" % args.task)
+        for label, value in (("started_at", args.started_at), ("ended_at", args.ended_at)):
+            if value and _parse_iso(value) is None:
+                errors.append("%s: --%s must be an ISO timestamp" % (args.task, label.replace("_", "-")))
+    return errors
+
+
+def _apply_record(args, task):
+    if args.command == "record-review":
+        task["review"] = {"sha": args.sha, "verdict": args.verdict, "reviewer": args.reviewer}
+        return "review %s" % args.verdict
+    if args.command == "record-verification":
+        criteria = [p.strip() for p in args.criteria.split(",") if p.strip()]
+        task.setdefault("verifications", [])
+        if task["verifications"] is None:
+            task["verifications"] = []
+        task["verifications"].append({"command": args.command_text, "result": args.result,
+                                      "revision": args.revision,
+                                      "environment": args.environment, "criteria": criteria})
+        return "verification %s @ %s" % (args.result, args.revision)
+    if args.command == "record-attempt":
+        repair = task.get("repair")
+        if not isinstance(repair, dict):
+            repair = {"max_attempts": 3, "attempts": []}
+            task["repair"] = repair
+        attempts = repair.setdefault("attempts", [])
+        if attempts is None:
+            attempts = repair["attempts"] = []
+        attempt = {"n": len(attempts) + 1, "failure_signature": args.failure_signature,
+                   "diagnosis": args.diagnosis, "result": args.result}
+        if args.started_at:
+            attempt["started_at"] = args.started_at
+        if args.ended_at:
+            attempt["ended_at"] = args.ended_at
+        attempts.append(attempt)
+        return "attempt %d %s" % (attempt["n"], args.result)
+    if args.command == "set-tip":
+        task["tip_sha"] = args.sha
+        return "tip %s" % args.sha
+    return ""
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="jstack", description=__doc__.splitlines()[0])
     parser.add_argument("--plan", default="PLAN.md", help="plan file holding the jstack-graph block")
@@ -568,7 +784,32 @@ def main(argv=None):
     trans_p.add_argument("new_status")
     render_p = sub.add_parser("render", help="print or write the generated status view")
     render_p.add_argument("--write", action="store_true")
+    rr = sub.add_parser("record-review", help="record a review without editing JSON by hand")
+    rr.add_argument("task"); rr.add_argument("--sha", required=True)
+    rr.add_argument("--verdict", required=True, choices=("pass", "fail"))
+    rr.add_argument("--reviewer", required=True)
+    rv = sub.add_parser("record-verification", help="record a verification run")
+    rv.add_argument("task"); rv.add_argument("--command", dest="command_text", required=True)
+    rv.add_argument("--result", required=True, choices=("pass", "fail"))
+    rv.add_argument("--revision", required=True); rv.add_argument("--environment", required=True)
+    rv.add_argument("--criteria", required=True, help="comma-separated criterion ids, e.g. AC1,AC2")
+    ra = sub.add_parser("record-attempt", help="record a repair attempt")
+    ra.add_argument("task"); ra.add_argument("--failure-signature", required=True)
+    ra.add_argument("--diagnosis", required=True)
+    ra.add_argument("--result", required=True, choices=("pass", "fail"))
+    ra.add_argument("--started-at", default=None); ra.add_argument("--ended-at", default=None)
+    st = sub.add_parser("set-tip", help="record a task branch tip SHA")
+    st.add_argument("task"); st.add_argument("--sha", required=True)
     args = parser.parse_args(argv)
+    needs_lock = (args.command in RECORD_COMMANDS or args.command == "transition"
+                  or (args.command in ("render", "status") and getattr(args, "write", False)))
+    if needs_lock:
+        with plan_lock(args.plan):
+            return _run(args)
+    return _run(args)
+
+
+def _run(args):
 
     try:
         text, graph = load_plan(args.plan)
@@ -615,13 +856,21 @@ def main(argv=None):
             errors.append("%s: stale review: reviewed %s, branch head %s"
                           % (task["id"], review["sha"], head))
         if task.get("status") in ("integrated", "verified", "done"):
-            target = graph.get("integration_branch") or "main"
-            merged, reason = is_merged(task, repo, target if task.get("status") != "done" else "main")
+            target = integration_branch(graph) if task.get("status") != "done" else delivery_branch(graph)
+            merged, reason = is_merged(task, repo, target)
             print("%s: merged into %s: %s (%s)" % (task["id"], target, merged, reason))
         for warn in restart_warnings(graph, repo):
-            if warn.startswith(task["id"] + ":") or task["id"] in warn:
+            if warn_mentions_task(warn, task["id"]):
                 print("restart-check: %s" % warn)
         return report_errors(errors, "%s: ok (status %s)" % (task["id"], task.get("status")))
+    if args.command in RECORD_COMMANDS:
+        errors = _record_errors(args)
+        if errors:
+            return report_errors(errors)
+        summary = _apply_record(args, task)
+        save_plan(args.plan, text, graph)
+        print("%s: %s" % (task["id"], summary))
+        return 0
     if args.command == "transition":
         errors = validate(graph) + transition_errors(graph, task, args.new_status, repo)
         if errors:

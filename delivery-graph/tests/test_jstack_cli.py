@@ -6,12 +6,14 @@ All data is synthetic. Git tests build temporary repositories.
 import contextlib
 import io
 import json
+import multiprocessing
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKILL = os.path.dirname(HERE)
@@ -45,6 +47,11 @@ def write_plan(directory, g, name="PLAN.md"):
         handle.write("# Plan\n\n%s\nplaceholder\n%s\n\n```jstack-graph\n%s\n```\n"
                      % (jc.VIEW_START, jc.VIEW_END, json.dumps(g, indent=2)))
     return path
+
+
+def _concurrent_transition(job):
+    plan, tid = job
+    return jc.main(["--plan", plan, "transition", tid, "in_progress"])
 
 
 def run_cli(*argv):
@@ -297,6 +304,7 @@ class GitChecks(TempDir):
         errs = jc.transition_errors(graph(t), t, "integrated", repo)
         self.assertTrue(any("stale review" in e for e in errs), errs)
         t["review"]["sha"] = head
+        git(repo, "merge", "-q", "--no-ff", "feat/t1", "-m", "merge t1")
         self.assertEqual(jc.transition_errors(graph(t), t, "integrated", repo), [])
 
     def test_zero_own_commit_branch_is_never_merged(self):
@@ -450,6 +458,225 @@ class CliRoundTrip(TempDir):
         code, out = run_cli("--plan", path, "validate")
         self.assertEqual(code, 1)
         self.assertIn("no ```jstack-graph block", out)
+
+
+class AtomicLockedWrites(TempDir):
+    def test_crash_before_replace_leaves_old_file_intact(self):
+        plan = write_plan(self.dir, graph(task("T1")))
+        with open(plan) as handle:
+            before = handle.read()
+        _, g = jc.load_plan(plan)
+        g["tasks"][0]["status"] = "in_progress"
+        with unittest.mock.patch.object(jc.os, "replace", side_effect=OSError("crash")):
+            with self.assertRaises(OSError):
+                jc.save_plan(plan, before, g)
+        with open(plan) as handle:
+            self.assertEqual(handle.read(), before)
+
+    def test_two_concurrent_transitions_both_land(self):
+        plan = write_plan(self.dir, graph(task("T1", scope=["src/a/"]),
+                                          task("T2", scope=["src/b/"])))
+        ctx = multiprocessing.get_context("fork")
+        with ctx.Pool(2) as pool:
+            codes = pool.map(_concurrent_transition, [(plan, "T1"), (plan, "T2")])
+        self.assertEqual(codes, [0, 0])
+        _, g = jc.load_plan(plan)
+        self.assertEqual([t["status"] for t in g["tasks"]], ["in_progress", "in_progress"])
+        self.assertTrue(os.path.exists(jc.lock_path_for(plan)))
+
+
+class IntegrationProof(TempDir):
+    def branch_with_commit(self, repo, branch):
+        git(repo, "checkout", "-q", "-b", branch)
+        with open(os.path.join(repo, "f.txt"), "w") as handle:
+            handle.write("work\n")
+        git(repo, "commit", "-q", "-am", "work on %s" % branch)
+        head = git(repo, "rev-parse", "HEAD")
+        git(repo, "checkout", "-q", "main")
+        return head
+
+    def reviewed(self, head, branch="feat/t1"):
+        return task("T1", status="review", branch=branch, tip_sha=head,
+                    review={"sha": head, "verdict": "pass"},
+                    verifications=[{"command": "pytest", "result": "pass",
+                                    "revision": head, "environment": "local",
+                                    "criteria": ["AC1"]}])
+
+    def test_refused_when_reviewed_sha_not_in_integration_branch(self):
+        repo = self.make_repo()
+        head = self.branch_with_commit(repo, "feat/t1")
+        t = self.reviewed(head)
+        errs = jc.transition_errors(graph(t), t, "integrated", repo)
+        self.assertTrue(any("proof" in e and "integration branch" in e for e in errs), errs)
+
+    def test_success_after_merge_into_custom_integration_branch(self):
+        repo = self.make_repo()
+        head = self.branch_with_commit(repo, "feat/t1")
+        git(repo, "branch", "int/goal")
+        git(repo, "checkout", "-q", "int/goal")
+        git(repo, "merge", "-q", "--no-ff", "feat/t1", "-m", "merge t1")
+        git(repo, "checkout", "-q", "main")
+        t = self.reviewed(head)
+        g = graph(t, integration_branch="int/goal")
+        self.assertEqual(jc.transition_errors(g, t, "integrated", repo), [])
+
+    def test_success_via_landed_record(self):
+        repo = self.make_repo()
+        head = self.branch_with_commit(repo, "feat/t1")
+        landing = git(repo, "rev-parse", "main")
+        t = self.reviewed(head)
+        t["landed"] = {"tip_sha": head, "landing_sha": landing}
+        self.assertEqual(jc.transition_errors(graph(t), t, "integrated", repo), [])
+
+
+class StartGuardsExtra(unittest.TestCase):
+    def errs(self, g, tid, new):
+        return jc.transition_errors(g, jc.tasks_by_id(g)[tid], new, None)
+
+    def test_repairing_to_in_progress_scope_overlap(self):
+        g = graph(task("T1", status="in_progress", scope=["src/api/"]),
+                  task("T2", status="repairing", scope=["src/api/x.py"]))
+        self.assertTrue(any("overlaps" in e for e in self.errs(g, "T2", "in_progress")))
+
+    def test_repairing_to_in_progress_duplicate_branch(self):
+        g = graph(task("T1", status="review", branch="feat/x"),
+                  task("T2", status="repairing", branch="feat/x", scope=["src/z/"]))
+        self.assertTrue(any("duplicate start" in e for e in self.errs(g, "T2", "in_progress")))
+
+    def test_review_to_in_progress_scope_overlap(self):
+        g = graph(task("T1", status="in_progress", scope=["src/api/"]),
+                  task("T2", status="review", scope=["src/api/y.py"], tip_sha="a" * 40))
+        self.assertTrue(any("overlaps" in e for e in self.errs(g, "T2", "in_progress")))
+
+    def test_repairing_to_in_progress_disjoint_ok(self):
+        g = graph(task("T1", status="in_progress", scope=["src/a/"]),
+                  task("T2", status="repairing", scope=["src/b/"]))
+        self.assertEqual(self.errs(g, "T2", "in_progress"), [])
+
+
+class ExactIdAndDelivery(TempDir):
+    def test_warn_mentions_task_exact_token(self):
+        self.assertFalse(jc.warn_mentions_task("T10: in_progress but no worktree", "T1"))
+        self.assertTrue(jc.warn_mentions_task("T10: in_progress but no worktree", "T10"))
+        self.assertTrue(jc.warn_mentions_task("duplicate branch used by T1, T10", "T1"))
+
+    def test_check_t1_does_not_report_t10_warning(self):
+        repo = self.make_repo()
+        g = graph(task("T1"), task("T10", status="in_progress", branch="feat/t10"))
+        plan = write_plan(repo, g)
+        code, out = run_cli("--plan", plan, "--repo", repo, "check", "T1")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("no worktree holds", out)
+        code, out = run_cli("--plan", plan, "--repo", repo, "check", "T10")
+        self.assertIn("no worktree holds", out)
+
+    def test_ready_branch_warning_reports_commits_ahead(self):
+        repo = self.make_repo()
+        git(repo, "checkout", "-q", "-b", "feat/t1")
+        with open(os.path.join(repo, "f.txt"), "w") as handle:
+            handle.write("work\n")
+        git(repo, "commit", "-q", "-am", "work")
+        git(repo, "checkout", "-q", "main")
+        warns = jc.restart_warnings(graph(task("T1", status="ready", branch="feat/t1")), repo)
+        self.assertTrue(any("1 commits ahead" in w for w in warns), warns)
+
+    def test_done_uses_delivery_branch(self):
+        repo = self.make_repo()
+        git(repo, "checkout", "-q", "-b", "feat/t1")
+        with open(os.path.join(repo, "f.txt"), "w") as handle:
+            handle.write("work\n")
+        git(repo, "commit", "-q", "-am", "work")
+        head = git(repo, "rev-parse", "HEAD")
+        git(repo, "checkout", "-q", "main")
+        git(repo, "checkout", "-q", "-b", "release")
+        git(repo, "merge", "-q", "--no-ff", "feat/t1", "-m", "merge t1")
+        landing = git(repo, "rev-parse", "HEAD")
+        git(repo, "checkout", "-q", "main")
+        t = task("T1", status="verified", branch="feat/t1",
+                 landed={"tip_sha": head, "landing_sha": landing})
+        self.assertEqual(jc.transition_errors(graph(t, delivery_branch="release"), t, "done", repo), [])
+        self.assertTrue(jc.transition_errors(graph(t), t, "done", repo))
+
+
+class RecordCommands(TempDir):
+    SHA = "a" * 40
+
+    def test_record_review_verification_attempt_and_set_tip(self):
+        plan = write_plan(self.dir, graph(task("T1")))
+        self.assertEqual(run_cli("--plan", plan, "record-review", "T1", "--sha", self.SHA,
+                                 "--verdict", "pass", "--reviewer", "opus")[0], 0)
+        self.assertEqual(run_cli("--plan", plan, "record-verification", "T1", "--command",
+                                 "pytest -q", "--result", "pass", "--revision", self.SHA,
+                                 "--environment", "local", "--criteria", "AC1,AC2")[0], 0)
+        self.assertEqual(run_cli("--plan", plan, "record-attempt", "T1",
+                                 "--failure-signature", "KeyError", "--diagnosis", "d1",
+                                 "--result", "fail", "--started-at", "2026-01-01T00:00:00Z",
+                                 "--ended-at", "2026-01-01T00:10:00Z")[0], 0)
+        self.assertEqual(run_cli("--plan", plan, "set-tip", "T1", "--sha", self.SHA)[0], 0)
+        _, g = jc.load_plan(plan)
+        t = g["tasks"][0]
+        self.assertEqual(t["review"], {"sha": self.SHA, "verdict": "pass", "reviewer": "opus"})
+        self.assertEqual(t["verifications"][0]["criteria"], ["AC1", "AC2"])
+        self.assertEqual(t["repair"]["attempts"][0]["n"], 1)
+        self.assertEqual(t["repair"]["attempts"][0]["started_at"], "2026-01-01T00:00:00Z")
+        self.assertEqual(t["tip_sha"], self.SHA)
+
+    def test_record_rejects_short_sha_and_does_not_write(self):
+        plan = write_plan(self.dir, graph(task("T1")))
+        code, out = run_cli("--plan", plan, "set-tip", "T1", "--sha", "abc123")
+        self.assertEqual(code, 1)
+        self.assertIn("40-hex", out)
+        _, g = jc.load_plan(plan)
+        self.assertIsNone(g["tasks"][0]["tip_sha"])
+        code, out = run_cli("--plan", plan, "record-review", "T1", "--sha", "xyz",
+                            "--verdict", "pass", "--reviewer", "r")
+        self.assertEqual(code, 1)
+
+    def test_record_verification_rejects_bad_revision_and_empty_criteria(self):
+        plan = write_plan(self.dir, graph(task("T1")))
+        code, _ = run_cli("--plan", plan, "record-verification", "T1", "--command", "pytest",
+                          "--result", "pass", "--revision", "short",
+                          "--environment", "local", "--criteria", "AC1")
+        self.assertEqual(code, 1)
+        code, _ = run_cli("--plan", plan, "record-verification", "T1", "--command", "pytest",
+                          "--result", "pass", "--revision", self.SHA,
+                          "--environment", "local", "--criteria", ",,")
+        self.assertEqual(code, 1)
+
+    def test_record_unknown_task(self):
+        plan = write_plan(self.dir, graph(task("T1")))
+        code, out = run_cli("--plan", plan, "set-tip", "T9", "--sha", self.SHA)
+        self.assertEqual(code, 1)
+        self.assertIn("unknown task", out)
+
+
+class RepairSeconds(unittest.TestCase):
+    def timed(self, seconds, max_seconds=60):
+        return task("T1", status="repairing", repair={
+            "max_attempts": 5, "max_seconds": max_seconds,
+            "attempts": [{"n": 1, "failure_signature": "x", "diagnosis": "d",
+                          "result": "fail",
+                          "started_at": "2026-01-01T00:00:00Z",
+                          "ended_at": "2026-01-01T00:%02d:%02dZ" % (seconds // 60, seconds % 60)}]})
+
+    def test_max_seconds_enforced_from_timestamps(self):
+        t = self.timed(120)
+        errs = jc.transition_errors(graph(t), t, "in_progress", None)
+        self.assertTrue(any("budget exhausted" in e and "seconds" in e for e in errs), errs)
+        t2 = task("T1", status="in_progress", repair=t["repair"])
+        errs = jc.transition_errors(graph(t2), t2, "repairing", None)
+        self.assertTrue(any("budget exhausted" in e for e in errs), errs)
+
+    def test_max_seconds_ignored_without_timestamps(self):
+        t = task("T1", status="repairing", repair={
+            "max_attempts": 5, "max_seconds": 1,
+            "attempts": [{"n": 1, "failure_signature": "x", "diagnosis": "d", "result": "fail"}]})
+        self.assertEqual(jc.transition_errors(graph(t), t, "in_progress", None), [])
+
+    def test_max_seconds_within_budget_ok(self):
+        t = self.timed(30)
+        self.assertEqual(jc.transition_errors(graph(t), t, "in_progress", None), [])
+        self.assertEqual(jc.repair_seconds(t), 30.0)
 
 
 if __name__ == "__main__":
