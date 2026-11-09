@@ -86,8 +86,8 @@ You course-correct now and then. That's the job.
   builds against fixed contracts, a different model reviews, and the
   builder never reviews its own work. Bounded builds and early reviews
   may run on cheaper or other-vendor models; the final review before
-  merge or deploy runs on a top-tier model, never one the operator
-  banned. Another model's report is an unverified lead until it is
+  merge or deploy runs on a top-tier Anthropic model, and never on one
+  the operator banned. Another model's report is an unverified lead until it is
   checked against the code and the data.
 - **Local models and other agent CLIs**: OpenCode with local models for
   bounded tasks (formatting, docs, simple refactors with tests, log

@@ -335,8 +335,8 @@ You coordinate. Builders and reviewers do focused work.
   Template: `templates/BUILDER_BRIEF.md`. Check every path and command
   in the brief before you send it. A wrong path costs the builder an
   hour, or it invents a workaround. Every brief carries stop-and-ask
-  rules: if the change would alter a decision path (money, safety,
-  user-visible behaviour), the builder stops after the mapping and
+  rules: if the change would alter a decision path (cost or spend,
+  safety, user-visible behaviour, data deletion), the builder stops after the mapping and
   reports instead of applying it. If the brief hands the builder a
   report written by another vendor's model, mark it as an unverified
   lead and require independent verification before use.
@@ -518,14 +518,15 @@ and every action stays blocked while all the tests pass.
 
 A builder or reviewer does not have to run on the same CLI or the same
 vendor as the coordinator. Local models through OpenCode (Ollama, LM
-Studio) and third-party agent CLIs (for example Codex, Muse, or
-agy/Gemini) are useful inside the routing recorded in the mandate, under
+Studio) and third-party agent CLIs (for example Codex, or Muse and
+agy/Gemini, whose headless modes, sandboxes and quotas differ and change
+over time; check each one's current documentation) are useful inside the routing recorded in the mandate, under
 the same rules as any other builder.
 
 **OpenCode with local models** fits bounded tasks: formatting, docs,
 simple refactors with tests, log triage, and first-pass reviews. Its
-limits set the boundary: small context windows, unreliable tool use on
-long multi-step work, and no access to secrets or production. Give it
+limits set the boundary: typically small context windows and less
+reliable tool use on long multi-step work (varies by model), and no access to secrets or production. Give it
 narrow briefs with exact files and test commands, and put its output
 through the same independent review as any builder's.
 
