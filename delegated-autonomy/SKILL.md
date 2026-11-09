@@ -133,7 +133,11 @@ On every session start or resume ("crashed again, reload and continue"):
    `PLAN.md` and the tail of `LOG.md`.
 2. Take inventory before you act: branches and worktrees, background jobs
    still running, production state, and whatever the log says was in
-   flight. Look for sub-agents that died mid-task: a worktree with
+   flight. When the plan carries a delivery graph, run
+   `jstack status` and `jstack ready` (delivery-graph skill) before the
+   next step: they compare saved status with git and worktrees and flag
+   a task that is already in flight, so a restart does not start the
+   same task or delivery twice. Look for sub-agents that died mid-task: a worktree with
    uncommitted changes and no live agent is unfinished work. Inspect it,
    finish or commit it, and run the gates; don't relaunch it from
    scratch and don't delete it.
@@ -320,7 +324,9 @@ You coordinate. Builders and reviewers do focused work.
 - **Split only what needs splitting.** One task or a short chain runs as a
   sequential loop: build, review, merge, verify, next. When a goal needs
   several dependent or parallel tasks, or tasks that must land together,
-  plan and integrate them with the `delivery-graph` skill.
+  plan and integrate them with the `delivery-graph` skill. When that
+  skill's `jstack` CLI is in use, starts, integration and delivery go
+  through `jstack transition`; do not hand-edit task status in the plan.
 - **Assume other sessions share the machine and the repository.** Do
   multi-step work in your own worktree, not the main checkout. Run
   `git branch --show-current` right before every commit, stage explicit

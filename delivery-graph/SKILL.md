@@ -90,6 +90,75 @@ The **frontier** is every `ready` task. Recompute it after each status
 change. A blocker is satisfied when its work is merged into the revision
 the dependent task starts from, not when its branch looks finished.
 
+### Machine-checkable graph: the `jstack` CLI
+
+Do not track the rules in this section by hand when a plan carries a
+graph. The plan file holds one fenced ` ```jstack-graph ` JSON block
+(tasks, `blocked_by`, `scope`, `status`, `review.sha`, structured
+`verifications`, `repair` budget and attempts, `landed`); that block is
+the single source of truth. The human task table is generated from it
+between `jstack:status` markers and is never hand-edited. Tool:
+`jstack_cli.py` in this skill (Python 3.10+, standard library only),
+run as `python3 <skill>/jstack_cli.py --plan PLAN.md <command>` or via
+the `jstack` entry script next to it.
+
+| Command | What it enforces |
+|---|---|
+| `jstack validate` | Unique task IDs, existing dependencies (tasks or declared questions), no dependency cycles, no task without a work area (`scope`), requirement trace or acceptance criteria, well-formed review/verification/repair records |
+| `jstack ready` | The frontier: tasks in `blocked`/`ready` whose blockers are `integrated`/`verified`/`done` and whose questions are answered |
+| `jstack check T3` | One task against git: stale review (reviewed SHA vs current branch head), merged-ness by the merged-branch rules (landed record first, git heuristics only as fallback, a branch with zero own commits is never merged), worktree presence, restart warnings for that task |
+| `jstack status [--write]` | The generated status view plus restart checks for every task (below). `--write` re-renders the view into the plan |
+| `jstack transition T3 <status>` | The only way status changes. Refuses illegal moves and moves whose evidence does not hold (below); writes the block and the generated view back |
+| `jstack render [--write]` | Print or write the generated status view |
+
+Rules are enforced only where work goes through the CLI: a task starts
+with `transition <task> in_progress`, integrates with
+`transition <task> integrated`, and counts as landed with
+`transition <task> done`. Editing `status` in the block by hand bypasses
+every guard and is not allowed during a run.
+
+**Controlled transitions.** `blocked -> ready -> in_progress -> review
+-> integrated -> verified -> done`, with `repairing` as the bounded
+in-task loop (`in_progress`/`review -> repairing -> in_progress`),
+`blocked` for budget exhaustion, and `stopped` from any live state.
+Guards beyond the shape: starting needs satisfied blockers, no scope
+overlap with an in-progress task, and no branch already in flight;
+`review -> integrated` needs a passing review whose SHA equals the
+current branch head and passing verifications at that exact revision
+covering every acceptance criterion of the task; `integrated ->
+verified` needs the same coverage at the recorded `candidate_sha`;
+`verified -> done` needs a `landed` record that git proves is in
+`main`. A green result on old code, or one covering only part of the
+requirement, is therefore detected, not trusted.
+
+**Verification is structured data.** Each record names `command`,
+`result`, `revision`, `environment` and the `criteria` it covers. There
+is no bare "green": a check counts only for the revision and criteria
+recorded on it.
+
+**Bounded repair.** The graph is acyclic; the loop inside a task
+(build, test, review, repair) is separate and bounded by
+`repair.max_attempts` (and an optional `max_seconds` budget recorded for
+the coordinator). Entering or leaving `repairing` past the budget is
+refused and the task goes to `blocked`: a new diagnosis is required.
+When the same `failure_signature` repeats, a retry is refused until the
+latest attempt records a different `diagnosis`. A failure in joint
+verification does not reopen tasks: brief a new correction task with
+its own branch, evidence and budget.
+
+**Restart safety.** `status` and `check` compare saved status with git
+and worktrees before the next step: duplicate in-flight branches or
+worktrees, an `in_progress` task with no worktree holding its branch, a
+ready task whose branch already exists, and a branch tip that moved
+since the plan was written are all flagged, so a restart does not start
+the same task or delivery twice.
+
+**Next step (not implemented): automatic scheduling.** With validate,
+transitions and restart checks in place, a scheduler can pick frontier
+tasks by scope, machine lock and review capacity and start them through
+`transition`. That is deliberately left for later; today the
+coordinator runs the commands.
+
 ## 3. Decide what runs in parallel
 
 Start a ready task next to others only when every row holds:
@@ -199,7 +268,7 @@ plan change, not a quiet edit.
 | A task hits a stop rule | Mark it `stopped`. Its dependents stay `blocked` on it; independent tasks continue (§1). Don't merge it. If it is already merged and causes a failure, revert it on the integration branch in its own commit. Landing without it is a plan change (§2) |
 | A builder died or was stopped | Inspect its worktree, commit the WIP, and resume with a brief that names that commit (§2). Don't relaunch from scratch |
 | A canary must roll back | Run its terminal verifier first, then roll back. Tearing the canary down destroys its evidence (§5 of delegated-autonomy) |
-| Resume after a crash | Rebuild the frontier from the plan file and git, not from memory: which task branches exist, which are merged (the `Landed` record matches, see [`merged-branch-check.md`](../delegated-autonomy/reference/merged-branch-check.md); a branch that only looks unmerged is kept, never force-deleted), which worktrees hold uncommitted work, which agents are alive |
+| Resume after a crash | Rebuild the frontier from the plan file and git, not from memory: run `jstack status` and `jstack ready` first (they flag duplicate in-flight branches, missing worktrees and moved tips), then check which task branches are merged (the `Landed` record matches, see [`merged-branch-check.md`](../delegated-autonomy/reference/merged-branch-check.md); a branch that only looks unmerged is kept, never force-deleted), which worktrees hold uncommitted work, which agents are alive. Never start a task the restart checks flag as already in flight |
 
 Clean up task worktrees and branches as §3 says. Delete the integration
 branch only after main holds it.

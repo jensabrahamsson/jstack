@@ -154,6 +154,20 @@ a [log](delegated-autonomy/templates/LOG.md), a
 - **Narrow lanes for behaviour change**: new behaviour ships beside the
   old rule with its own flags, approvals and stop rules, and scattered
   exceptions later refactor into data plus a resolver.
+- **Machine-checkable graph**: the plan carries one `jstack-graph` JSON
+  block as the single source of truth for task status; the human table
+  is generated from it. A small standard-library CLI
+  ([`jstack_cli.py`](delivery-graph/jstack_cli.py)) validates the graph
+  (unique IDs, existing dependencies, no cycles, work areas), computes
+  the frontier (`ready`), checks a task against git and its structured
+  verification records (`check`), compares saved status with git and
+  worktrees on restart (`status`), and is the only way status changes
+  (`transition`): `review -> integrated` needs a review on the current
+  branch SHA with verification covering every criterion at that
+  revision, and the in-task repair loop is bounded by an attempt budget
+  that demands a new diagnosis when the same failure repeats. Automatic
+  scheduling on top of the frontier is a documented next step, not yet
+  implemented. Tests: `python3 -m pytest delivery-graph/tests -q`.
 
 ### The core ideas in `openai-usage`
 
