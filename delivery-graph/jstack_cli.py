@@ -58,6 +58,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 import tempfile
 
 try:
@@ -165,6 +166,10 @@ def save_plan(path, text, graph):
             handle.write(new_text)
             handle.flush()
             os.fsync(handle.fileno())
+        try:
+            shutil.copymode(path, tmp)  # keep the plan's mode (mkstemp creates 0600)
+        except OSError:
+            pass
         os.replace(tmp, path)
     except BaseException:
         try:
