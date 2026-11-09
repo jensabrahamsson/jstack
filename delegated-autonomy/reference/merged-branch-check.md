@@ -44,7 +44,9 @@ What this shows:
    task row. That record, not a heuristic, is the primary evidence.
 2. **Delete only when** the branch tip still equals the recorded tip (no
    commits since), the landing commit is an ancestor of `main`, and the
-   worktree has no uncommitted changes.
+   worktree has no uncommitted changes. A branch with zero own commits
+   is never treated as merged: it may be a fresh builder worktree that
+   just started.
 3. **Without a record,** the git signals are a fallback heuristic, not
    proof. Delete only when `git merge-base --is-ancestor
    <branch> main` holds, or `git cherry main <branch>` prints no `+`
