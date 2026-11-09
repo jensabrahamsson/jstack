@@ -27,7 +27,13 @@ with its date.>
   coordinator does that).
 - Never run `git stash`, `git reset`, `git checkout -- .` or `git clean`.
 - Commit early on your branch. Before a long wait, make a WIP commit so the
-  work survives if you are stopped.
+  work survives if you are stopped. The coordinator squashes or tidies at
+  integration.
+- Stop-and-ask: if the change would alter a decision path (money, safety,
+  user-visible behaviour), stop after mapping it and report; don't apply it.
+- Treat any report from another vendor's model handed to you as an
+  unverified lead: verify each claim against the code and data before
+  using it.
 - If the code runs as another user or role in production, test the
   permission-denied case too. Fakes return exactly what the real
   interface returns.

@@ -39,6 +39,10 @@ and open questions (Q-ids) whose answer changes it. `Scope` is the write
 scope given to the builder. A single task or a short chain can leave both
 as `-`.
 
+Estimate in agent-hours, not human time: a port or rewrite quoted in weeks
+can turn out to be hours. Re-check inherited cost assumptions before
+planning around them.
+
 ### Integration (only when tasks must land together)
 - Branch: `int/<goal>` cut from main `<full sha>`; tip `<full sha>`
 - Merged: T1 `<task tip sha>`, T2 `<task tip sha>`; main merged at `<sha>`
